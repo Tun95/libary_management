@@ -1,2 +1,2 @@
 <!-- Unilorin Project -->
-**Unilorin Libary**
+**Libary Management**

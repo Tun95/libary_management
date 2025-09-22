@@ -1,0 +1,43 @@
+{
+  "name": "backend_service",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "DEBUG=*.js nodemon index.js",
+    "start": "DEBUG=*.js node index.js --name backend_service",
+    "test": "jest --detectOpenHandles"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@logtail/node": "^0.5.6",
+    "axios": "^1.12.2",
+    "bcryptjs": "^3.0.2",
+    "cloudinary": "^2.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-async-handler": "^1.2.0",
+    "express-rate-limit": "^8.1.0",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "moment": "^2.30.1",
+    "mongoose": "^8.18.1",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "nodemon": "^3.1.10",
+    "pino": "^9.11.0",
+    "redis": "^5.8.2",
+    "sharp": "^0.34.4",
+    "slugify": "^1.6.6",
+    "streamifier": "^0.1.1"
+  },
+  "devDependencies": {
+    "chai": "^6.0.1",
+    "jest": "^30.1.3"
+  }
+}

@@ -23,10 +23,10 @@ module.exports = {
         development: {
           secretKey:
             process.env.PAYSTACK_SECRET_KEY ||
-            "sk_test_your_paystack_test_secret_key",
+            "sk_test_9a7cf6a621dad1bd87a4a9331b407838108f9940",
           publicKey:
             process.env.PAYSTACK_PUBLIC_KEY ||
-            "pk_test_your_paystack_test_public_key",
+            "pk_test_ef13bcd8c41beba368902728447ba2b4f79a3287",
         },
         production: {
           secretKey:

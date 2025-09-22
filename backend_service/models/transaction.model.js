@@ -13,21 +13,21 @@ const transactionSchema = new mongoose.Schema(
       ref: "Book",
       required: true,
     },
-    borrowDate: {
+    borrow_date: {
       type: Date,
       default: Date.now,
     },
-    dueDate: {
+    due_date: {
       type: Date,
       required: true,
     },
-    returnDate: Date,
+    return_date: Date,
     status: {
       type: String,
       enum: ["borrowed", "returned", "overdue"],
       default: "borrowed",
     },
-    fineAmount: {
+    fine_amount: {
       type: Number,
       default: 0,
     },

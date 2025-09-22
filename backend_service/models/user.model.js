@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    matricNumber: {
+    matric_number: {
       type: String,
       required: true,
       unique: true,
@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema(
       required: true,
       minlength: 6,
     },
-    fullName: {
+    full_name: {
       type: String,
       required: true,
       trim: true,
@@ -41,33 +41,33 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    idExpiration: {
+    id_expiration: {
       type: Date,
       required: true,
     },
-    profileImage: {
+    profile_image: {
       type: String, // URL or path to stored image
       default: "",
     },
-    qrCode: {
+    qr_code: {
       type: String, // QR code data
       unique: true,
     },
-    isActive: {
+    is_active: {
       type: Boolean,
       default: true,
     },
-    borrowedBooks: [
+    borrowed_books: [
       {
-        bookId: {
+        book_id: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Book",
         },
-        borrowDate: {
+        borrow_date: {
           type: Date,
           default: Date.now,
         },
-        dueDate: {
+        due_date: {
           type: Date,
           required: true,
         },
@@ -103,7 +103,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 
 // Check if ID is still valid
 userSchema.methods.isIdValid = function () {
-  return this.idExpiration > new Date() && this.isActive;
+  return this.id_expiration > new Date() && this.is_active;
 };
 
 module.exports = mongoose.model("User", userSchema);

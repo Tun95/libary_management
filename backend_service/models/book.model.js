@@ -23,7 +23,7 @@ const bookSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    publicationYear: {
+    publication_year: {
       type: Number,
     },
     category: {
@@ -31,12 +31,12 @@ const bookSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    totalCopies: {
+    total_copies: {
       type: Number,
       required: true,
       min: 1,
     },
-    availableCopies: {
+    available_copies: {
       type: Number,
       required: true,
       min: 0,
@@ -52,7 +52,7 @@ const bookSchema = new mongoose.Schema(
     image: {
       type: String, // URL or path to book cover image
     },
-    isActive: {
+    is_active: {
       type: Boolean,
       default: true,
     },

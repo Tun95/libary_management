@@ -1,0 +1,239 @@
+// backend_service/src/utils/validators.js
+const { body, param, query, validationResult } = require("express-validator");
+const User = require("../../models/user.model");
+const Book = require("../../models/book.model");
+const { STATUS, ERROR_MESSAGES } = require("../constants/constants");
+
+// Common validation error handler
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      status: STATUS.FAILED,
+      message: ERROR_MESSAGES.VALIDATION_ERROR,
+      errors: errors.array(),
+    });
+  }
+  next();
+};
+
+// Registration Validation
+const registrationValidation = [
+  body("matric_number")
+    .isString()
+    .withMessage("Matric number must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Matric number is required")
+    .custom(async (value) => {
+      const existingUser = await User.findOne({
+        matric_number: value.toUpperCase(),
+      });
+      if (existingUser) {
+        throw new Error("Matric number already exists");
+      }
+      return true;
+    }),
+
+  body("password")
+    .isString()
+    .withMessage("Password must be a string")
+    .isLength({ min: 6 })
+    .withMessage("Password must be at least 6 characters long"),
+
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required")
+    .normalizeEmail()
+    .custom(async (value) => {
+      const existingUser = await User.findOne({ email: value.toLowerCase() });
+      if (existingUser) {
+        throw new Error("Email already exists");
+      }
+      return true;
+    }),
+
+  body("full_name")
+    .isString()
+    .withMessage("Full name must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Full name is required"),
+
+  body("faculty")
+    .isString()
+    .withMessage("Faculty must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Faculty is required"),
+
+  body("department")
+    .isString()
+    .withMessage("Department must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Department is required"),
+
+  body("id_expiration")
+    .isISO8601()
+    .withMessage("Valid expiration date is required")
+    .custom((value) => {
+      if (new Date(value) <= new Date()) {
+        throw new Error("Expiration date must be in the future");
+      }
+      return true;
+    }),
+
+  handleValidationErrors,
+];
+
+// Login Validation
+const loginValidation = [
+  body("matric_number")
+    .isString()
+    .withMessage("Matric number must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Matric number is required"),
+
+  body("password")
+    .isString()
+    .withMessage("Password must be a string")
+    .notEmpty()
+    .withMessage("Password is required"),
+
+  handleValidationErrors,
+];
+
+// QR Validation
+const qrValidation = [
+  body("qr_data")
+    .isString()
+    .withMessage("QR data must be a string")
+    .notEmpty()
+    .withMessage("QR data is required"),
+
+  handleValidationErrors,
+];
+
+// Book Validation
+const bookValidation = [
+  body("title")
+    .isString()
+    .withMessage("Title must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Title is required"),
+
+  body("author")
+    .isString()
+    .withMessage("Author must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Author is required"),
+
+  body("isbn")
+    .isString()
+    .withMessage("ISBN must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("ISBN is required")
+    .custom(async (value) => {
+      const existingBook = await Book.findOne({ isbn: value });
+      if (existingBook) {
+        throw new Error("ISBN already exists");
+      }
+      return true;
+    }),
+
+  body("category")
+    .isString()
+    .withMessage("Category must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Category is required"),
+
+  body("total_copies")
+    .isInt({ min: 1 })
+    .withMessage("Total copies must be at least 1"),
+
+  handleValidationErrors,
+];
+
+// Borrow Book Validation
+const borrowBookValidation = [
+  body("book_id").isMongoId().withMessage("Valid book ID is required"),
+
+  body("user_id").isMongoId().withMessage("Valid user ID is required"),
+
+  body("due_date")
+    .optional()
+    .isISO8601()
+    .withMessage("Valid due date is required")
+    .custom((value) => {
+      if (new Date(value) <= new Date()) {
+        throw new Error("Due date must be in the future");
+      }
+      return true;
+    }),
+
+  handleValidationErrors,
+];
+
+// Return Book Validation
+const returnBookValidation = [
+  body("transaction_id")
+    .isMongoId()
+    .withMessage("Valid transaction ID is required"),
+
+  handleValidationErrors,
+];
+
+// User Update Validation
+const userUpdateValidation = [
+  body("email")
+    .optional()
+    .isEmail()
+    .withMessage("Valid email is required")
+    .normalizeEmail()
+    .custom(async (value, { req }) => {
+      const existingUser = await User.findOne({
+        email: value.toLowerCase(),
+        _id: { $ne: req.params.id },
+      });
+      if (existingUser) {
+        throw new Error("Email already exists");
+      }
+      return true;
+    }),
+
+  body("phone")
+    .optional()
+    .isString()
+    .withMessage("Phone must be a string")
+    .trim(),
+
+  body("id_expiration")
+    .optional()
+    .isISO8601()
+    .withMessage("Valid expiration date is required")
+    .custom((value) => {
+      if (new Date(value) <= new Date()) {
+        throw new Error("Expiration date must be in the future");
+      }
+      return true;
+    }),
+
+  handleValidationErrors,
+];
+
+module.exports = {
+  registrationValidation,
+  loginValidation,
+  qrValidation,
+  bookValidation,
+  borrowBookValidation,
+  returnBookValidation,
+  userUpdateValidation,
+  handleValidationErrors,
+};

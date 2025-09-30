@@ -16,13 +16,13 @@ const {
 setupRoutes = (server) => {
   // Auth Routes
   server
-    .route("/api/auth/register")
+    .route("/auth/register")
     .post(registrationValidation, authController.register);
 
-  server.route("/api/auth/login").post(loginValidation, authController.login);
+  server.route("/auth/login").post(loginValidation, authController.login);
 
   server
-    .route("/api/auth/verify-qr")
+    .route("/auth/verify-qr")
     .post(qrValidation, authController.verifyQR);
 
   // Book Routes

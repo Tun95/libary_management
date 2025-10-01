@@ -14,6 +14,10 @@ const {
   verifyLoginOtpValidation,
   resendOtpValidation,
   verifyEmailOtpValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation,
+  verifyResetTokenValidation,
+  changePasswordValidation,
 } = require("../utils/validators");
 
 setupRoutes = (server) => {
@@ -37,6 +41,23 @@ setupRoutes = (server) => {
     .post(verifyLoginOtpValidation, authController.verifyLoginOtp);
 
   server.route("/auth/verify-qr").post(qrValidation, authController.verifyQR);
+
+  // Password Reset Routes
+  server
+    .route("/auth/forgot-password")
+    .post(forgotPasswordValidation, authController.forgotPassword);
+
+  server
+    .route("/auth/reset-password")
+    .post(resetPasswordValidation, authController.resetPassword);
+
+  server
+    .route("/auth/verify-reset-token")
+    .post(verifyResetTokenValidation, authController.verifyResetToken);
+
+  server
+    .route("/api/auth/change-password")
+    .post(changePasswordValidation, authController.changePassword);
 
   // Book Routes
   server

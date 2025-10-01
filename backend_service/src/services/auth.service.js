@@ -222,7 +222,7 @@ class AuthService {
       const isStaff =
         user.roles.includes("librarian") || user.roles.includes("admin");
 
-      if (isStaff && !user.is_account_verified) {
+      if (!user.is_account_verified) {
         throw new Error("Please verify your email before logging in");
       }
 
@@ -276,7 +276,6 @@ class AuthService {
         id_expiration: user.id_expiration,
         status: user.status,
         roles: user.roles,
-        borrowed_books: user.borrowed_books,
         is_account_verified: user.is_account_verified,
       };
 
@@ -410,6 +409,189 @@ class AuthService {
       await logger.error(error, {
         service: "AuthService",
         method: "verifyQR",
+      });
+      throw error;
+    }
+  }
+
+  // Forgot Password
+  async forgotPassword(email) {
+    try {
+      const user = await User.findOne({ email: email.toLowerCase() });
+
+      if (!user) {
+        // Don't reveal if email exists or not for security
+        await logger.info("Password reset requested for non-existent email", {
+          service: "AuthService",
+          method: "forgotPassword",
+          email: email,
+        });
+        return { message: "If the email exists, a reset link has been sent" };
+      }
+
+      if (user.status !== "active") {
+        throw new Error("Account is not active");
+      }
+
+      const resetToken = user.createPasswordResetToken();
+      await user.save();
+
+      // Send password reset email
+      const resetUrl = `${config.frontendUrl}/reset-password?token=${resetToken}`;
+
+      await emailService.sendPasswordResetEmail(
+        user.email,
+        resetToken,
+        user.full_name,
+        resetUrl
+      );
+
+      await logger.info("Password reset email sent", {
+        service: "AuthService",
+        method: "forgotPassword",
+        user_id: user._id,
+        email: user.email,
+      });
+
+      return {
+        message: "If the email exists, a reset link has been sent",
+        reset_token: resetToken, // For API testing
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "AuthService",
+        method: "forgotPassword",
+        email: email,
+      });
+      throw error;
+    }
+  }
+
+  // Reset Password
+  async resetPassword(token, newPassword) {
+    try {
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+      const user = await User.findOne({
+        password_reset_token: hashedToken,
+        password_reset_expires: { $gt: Date.now() },
+      });
+
+      if (!user) {
+        throw new Error("Invalid or expired reset token");
+      }
+
+      if (user.status !== "active") {
+        throw new Error("Account is not active");
+      }
+
+      // Update password
+      user.password = newPassword;
+      user.password_reset_token = undefined;
+      user.password_reset_expires = undefined;
+      user.password_change_at = Date.now();
+      await user.save();
+
+      await logger.info("Password reset successfully", {
+        service: "AuthService",
+        method: "resetPassword",
+        user_id: user._id,
+        email: user.email,
+      });
+
+      return {
+        message: "Password reset successfully",
+        user: {
+          _id: user._id,
+          email: user.email,
+          full_name: user.full_name,
+        },
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "AuthService",
+        method: "resetPassword",
+      });
+      throw error;
+    }
+  }
+
+  // Change Password (for authenticated users)
+  async changePassword(userId, currentPassword, newPassword) {
+    try {
+      const user = await User.findById(userId);
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!(await user.isPasswordMatch(currentPassword))) {
+        throw new Error("Current password is incorrect");
+      }
+
+      if (user.status !== "active") {
+        throw new Error("Account is not active");
+      }
+
+      // Update password
+      user.password = newPassword;
+      user.password_change_at = Date.now();
+      await user.save();
+
+      await logger.info("Password changed successfully", {
+        service: "AuthService",
+        method: "changePassword",
+        user_id: user._id,
+        email: user.email,
+      });
+
+      return {
+        message: "Password changed successfully",
+        user: {
+          _id: user._id,
+          email: user.email,
+          full_name: user.full_name,
+        },
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "AuthService",
+        method: "changePassword",
+        user_id: userId,
+      });
+      throw error;
+    }
+  }
+
+  // Verify Reset Token
+  async verifyResetToken(token) {
+    try {
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+      const user = await User.findOne({
+        password_reset_token: hashedToken,
+        password_reset_expires: { $gt: Date.now() },
+      });
+
+      if (!user) {
+        throw new Error("Invalid or expired reset token");
+      }
+
+      return {
+        valid: true,
+        email: user.email,
+        full_name: user.full_name,
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "AuthService",
+        method: "verifyResetToken",
       });
       throw error;
     }

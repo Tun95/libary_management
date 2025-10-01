@@ -207,6 +207,129 @@ class AuthController {
       });
     }
   }
+
+  // Forgot Password
+  async forgotPassword(req, res) {
+    try {
+      const { email } = req.body;
+      const result = await authService.forgotPassword(email);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: result.message,
+        data: { email_sent: true },
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "AuthController",
+        method: "forgotPassword",
+        email: req.body.email,
+      });
+
+      const statusCode = error.message === "Account is not active" ? 403 : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Reset Password
+  async resetPassword(req, res) {
+    try {
+      const { token, new_password } = req.body;
+      const result = await authService.resetPassword(token, new_password);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "AuthController",
+        method: "resetPassword",
+      });
+
+      const statusCode =
+        error.message === "Invalid or expired reset token"
+          ? 400
+          : error.message === "Account is not active"
+          ? 403
+          : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Change Password
+  async changePassword(req, res) {
+    try {
+      const { current_password, new_password } = req.body;
+      const result = await authService.changePassword(
+        req.user._id,
+        current_password,
+        new_password
+      );
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "AuthController",
+        method: "changePassword",
+        user_id: req.user._id,
+      });
+
+      const statusCode =
+        error.message === "User not found"
+          ? 404
+          : error.message === "Current password is incorrect"
+          ? 400
+          : error.message === "Account is not active"
+          ? 403
+          : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Verify Reset Token
+  async verifyResetToken(req, res) {
+    try {
+      const { token } = req.body;
+      const result = await authService.verifyResetToken(token);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: "Reset token is valid",
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "AuthController",
+        method: "verifyResetToken",
+      });
+
+      const statusCode =
+        error.message === "Invalid or expired reset token" ? 400 : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
 }
 
 module.exports = new AuthController();

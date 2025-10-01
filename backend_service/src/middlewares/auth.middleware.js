@@ -12,7 +12,7 @@ const authMiddleware = async (req, res, next) => {
   if (!token) {
     return sendResponse(res, 401, {
       status: STATUS.FAILED,
-      message: ERROR_MESSAGES.NO_TOKEN,
+      message: ERROR_MESSAGES.TOKEN_REQUIRED,
     });
   }
 
@@ -23,7 +23,7 @@ const authMiddleware = async (req, res, next) => {
     if (!user) {
       return sendResponse(res, 401, {
         status: STATUS.FAILED,
-        message: ERROR_MESSAGES.INVALID_TOKEN,
+        message: ERROR_MESSAGES.TOKEN_INVALID,
       });
     }
 
@@ -32,7 +32,7 @@ const authMiddleware = async (req, res, next) => {
   } catch (error) {
     sendResponse(res, 401, {
       status: STATUS.FAILED,
-      message: ERROR_MESSAGES.INVALID_TOKEN,
+      message: ERROR_MESSAGES.TOKEN_INVALID,
     });
   }
 };

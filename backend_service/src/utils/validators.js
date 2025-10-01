@@ -36,11 +36,15 @@ const registrationValidation = [
     }),
 
   body("password")
-    .isString()
-    .withMessage("Password must be a string")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters long"),
-
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters long")
+    .matches(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&+])[A-Za-z\d@$!%*?&+]/
+    )
+    .withMessage(
+      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&+)"
+    ),
+    
   body("email")
     .isEmail()
     .withMessage("Valid email is required")
@@ -187,6 +191,67 @@ const qrValidation = [
   handleValidationErrors,
 ];
 
+// Forgot Password Validation
+const forgotPasswordValidation = [
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required")
+    .normalizeEmail(),
+
+  handleValidationErrors,
+];
+
+// Reset Password Validation
+const resetPasswordValidation = [
+  body("token")
+    .isString()
+    .withMessage("Reset token is required")
+    .notEmpty()
+    .withMessage("Reset token is required"),
+
+  body("new_password")
+    .isString()
+    .withMessage("New password must be a string")
+    .isLength({ min: 6 })
+    .withMessage("New password must be at least 6 characters long"),
+
+  handleValidationErrors,
+];
+
+// Change Password Validation
+const changePasswordValidation = [
+  body("current_password")
+    .isString()
+    .withMessage("Current password must be a string")
+    .notEmpty()
+    .withMessage("Current password is required"),
+
+  body("new_password")
+    .isString()
+    .withMessage("New password must be a string")
+    .isLength({ min: 6 })
+    .withMessage("New password must be at least 6 characters long")
+    .custom((value, { req }) => {
+      if (value === req.body.current_password) {
+        throw new Error("New password must be different from current password");
+      }
+      return true;
+    }),
+
+  handleValidationErrors,
+];
+
+// Verify Reset Token Validation
+const verifyResetTokenValidation = [
+  body("token")
+    .isString()
+    .withMessage("Reset token is required")
+    .notEmpty()
+    .withMessage("Reset token is required"),
+
+  handleValidationErrors,
+];
+
 // Book Validation
 const bookValidation = [
   body("title")
@@ -305,6 +370,10 @@ module.exports = {
   resendOtpValidation,
   verifyLoginOtpValidation,
   qrValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation,
+  changePasswordValidation,
+  verifyResetTokenValidation,
   bookValidation,
   borrowBookValidation,
   returnBookValidation,

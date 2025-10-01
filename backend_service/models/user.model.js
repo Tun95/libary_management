@@ -24,12 +24,10 @@ const userSchema = new mongoose.Schema(
     },
     faculty: {
       type: String,
-      required: true,
       trim: true,
     },
     department: {
       type: String,
-      required: true,
       trim: true,
     },
     email: {
@@ -44,7 +42,6 @@ const userSchema = new mongoose.Schema(
     },
     id_expiration: {
       type: Date,
-      required: true,
     },
     profile_image: {
       type: String, // URL or path to stored image
@@ -59,6 +56,23 @@ const userSchema = new mongoose.Schema(
       enum: ["active", "blocked", "closed"],
       default: "active",
     },
+    status_history: [
+      {
+        status: {
+          type: String,
+          enum: ["active", "blocked", "closed"],
+        },
+        reason: String,
+        changed_at: {
+          type: Date,
+          default: Date.now,
+        },
+        changed_by: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      },
+    ],
 
     roles: [
       {
@@ -112,6 +126,38 @@ const userSchema = new mongoose.Schema(
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+// Add initial status history when user is created
+userSchema.pre("save", async function (next) {
+  if (this.isNew) {
+    this.status_history = [
+      {
+        status: "active",
+        reason: "Account created",
+        changed_by: this._id, // Self for initial creation
+        changed_at: new Date(),
+      },
+    ];
+  }
+  next();
+});
+
+// Update status history when status changes
+userSchema.pre("save", async function (next) {
+  if (this.isModified("status") && !this.isNew) {
+    // Get the admin user who made the change from the context
+    // This will be set in the service layer
+    const changedBy = this._statusChangedBy || this._id;
+
+    this.status_history.push({
+      status: this.status,
+      reason: this._statusChangeReason || "Status updated",
+      changed_by: changedBy,
+      changed_at: new Date(),
+    });
+  }
   next();
 });
 
@@ -169,7 +215,11 @@ userSchema.methods.isPasswordMatch = async function (enteredPassword) {
 
 // Check if ID is still valid
 userSchema.methods.isIdValid = function () {
-  return this.id_expiration > new Date() && this.status === "active";
+  return (
+    this.status === "active" &&
+    this.id_expiration &&
+    this.id_expiration > new Date()
+  );
 };
 
 module.exports = mongoose.model("User", userSchema);

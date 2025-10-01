@@ -420,6 +420,25 @@ const userUpdateValidation = [
   handleValidationErrors,
 ];
 
+// User Status Validation
+const userStatusValidation = [
+  body("status")
+    .isString()
+    .withMessage("Status must be a string")
+    .isIn(["active", "blocked", "closed"])
+    .withMessage("Status must be: active, blocked, or closed"),
+
+  body("reason")
+    .optional()
+    .isString()
+    .withMessage("Reason must be a string")
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage("Reason must be less than 500 characters"),
+
+  handleValidationErrors,
+];
+
 module.exports = {
   requireActiveUser,
   requireActiveOnly,
@@ -439,5 +458,7 @@ module.exports = {
   borrowBookValidation,
   returnBookValidation,
   userUpdateValidation,
+  userStatusValidation,
+
   handleValidationErrors,
 };

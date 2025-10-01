@@ -214,18 +214,21 @@ class AuthService {
         throw new Error(ERROR_MESSAGES.INVALID_CREDENTIALS);
       }
 
+      // Check if account is active
       if (user.status !== "active") {
-        throw new Error(ERROR_MESSAGES.ACCOUNT_DEACTIVATED);
+        throw new Error(`Account is ${user.status}. Please contact support.`);
       }
 
       // Check if user is staff (librarian/admin)
       const isStaff =
         user.roles.includes("librarian") || user.roles.includes("admin");
 
+      // All users must verify email before login
       if (!user.is_account_verified) {
         throw new Error("Please verify your email before logging in");
       }
 
+      // For students, check if ID is valid
       if (!isStaff && !user.isIdValid()) {
         throw new Error(ERROR_MESSAGES.ID_EXPIRED);
       }
@@ -276,6 +279,7 @@ class AuthService {
         id_expiration: user.id_expiration,
         status: user.status,
         roles: user.roles,
+        borrowed_books: user.borrowed_books,
         is_account_verified: user.is_account_verified,
       };
 
@@ -376,10 +380,12 @@ class AuthService {
         throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
       }
 
+      // Check if account is active
       if (user.status !== "active") {
-        throw new Error(ERROR_MESSAGES.ACCOUNT_DEACTIVATED);
+        throw new Error(`Account is ${user.status}. Library access denied.`);
       }
 
+      // Check if ID is valid
       if (!user.isIdValid()) {
         throw new Error(ERROR_MESSAGES.ID_EXPIRED);
       }
@@ -581,7 +587,7 @@ class AuthService {
       throw error;
     }
   }
-  
+
   // Verify Reset Token
   async verifyResetToken(token) {
     try {

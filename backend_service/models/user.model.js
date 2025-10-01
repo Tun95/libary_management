@@ -1,6 +1,7 @@
 // backend_service/models/user.model.js - User model
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 const userSchema = new mongoose.Schema(
   {
@@ -89,7 +90,7 @@ const userSchema = new mongoose.Schema(
           type: Date,
           required: true,
         },
-        returnDate: Date,
+        return_date: Date,
         status: {
           type: String,
           enum: ["borrowed", "returned", "overdue"],
@@ -114,15 +115,10 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-// Create the slug before saving the user
+// Create the slug before saving the user - FIXED
 userSchema.pre("save", async function (next) {
-  if (
-    this.isModified("first_name") ||
-    this.isModified("last_name") ||
-    !this.slug
-  ) {
-    let full_name = `${this.first_name} ${this.last_name}`;
-    let base_slug = full_name
+  if (this.isModified("full_name") || !this.slug) {
+    let base_slug = this.full_name
       .toLowerCase()
       .replace(/ /g, "-")
       .replace(/[^\w-]+/g, "");
@@ -137,15 +133,15 @@ userSchema.pre("save", async function (next) {
       ) {
         counter++;
       }
-      this.set("slug", `${base_slug}-${counter}`);
+      this.slug = `${base_slug}-${counter}`;
     } else {
-      this.set("slug", base_slug);
+      this.slug = base_slug;
     }
   }
   next();
 });
 
-//Verify Account
+// Verify Account
 userSchema.methods.createAccountVerificationOtp = function () {
   const verification_code = Math.floor(
     100000 + Math.random() * 900000
@@ -155,7 +151,7 @@ userSchema.methods.createAccountVerificationOtp = function () {
   return verification_code;
 };
 
-//Password Reset
+// Password Reset
 userSchema.methods.createPasswordResetToken = function () {
   const resetToken = crypto.randomBytes(32).toString("hex");
   this.password_reset_token = crypto
@@ -166,7 +162,7 @@ userSchema.methods.createPasswordResetToken = function () {
   return resetToken;
 };
 
-//Match Password
+// Match Password
 userSchema.methods.isPasswordMatch = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };

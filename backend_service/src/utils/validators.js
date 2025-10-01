@@ -25,7 +25,7 @@ const registrationValidation = [
     .trim()
     .notEmpty()
     .withMessage("Matric number is required")
-    .custom(async (value) => {
+    .custom(async (value, { req }) => {
       const existingUser = await User.findOne({
         matric_number: value.toUpperCase(),
       });
@@ -60,21 +60,50 @@ const registrationValidation = [
     .notEmpty()
     .withMessage("Full name is required"),
 
+  body("roles")
+    .isArray()
+    .withMessage("Roles must be an array")
+    .custom((value) => {
+      const validRoles = ["student", "librarian", "admin"];
+      for (const role of value) {
+        if (!validRoles.includes(role)) {
+          throw new Error(`Invalid role: ${role}`);
+        }
+      }
+      return true;
+    }),
+
+  // Conditional validation based on roles
   body("faculty")
+    .if(
+      body("roles").custom(
+        (roles) => !roles.includes("librarian") && !roles.includes("admin")
+      )
+    )
     .isString()
     .withMessage("Faculty must be a string")
     .trim()
     .notEmpty()
-    .withMessage("Faculty is required"),
+    .withMessage("Faculty is required for students"),
 
   body("department")
+    .if(
+      body("roles").custom(
+        (roles) => !roles.includes("librarian") && !roles.includes("admin")
+      )
+    )
     .isString()
     .withMessage("Department must be a string")
     .trim()
     .notEmpty()
-    .withMessage("Department is required"),
+    .withMessage("Department is required for students"),
 
   body("id_expiration")
+    .if(
+      body("roles").custom(
+        (roles) => !roles.includes("librarian") && !roles.includes("admin")
+      )
+    )
     .isISO8601()
     .withMessage("Valid expiration date is required")
     .custom((value) => {
@@ -101,6 +130,48 @@ const loginValidation = [
     .withMessage("Password must be a string")
     .notEmpty()
     .withMessage("Password is required"),
+
+  handleValidationErrors,
+];
+
+// Verify Email OTP Validation
+const verifyEmailOtpValidation = [
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required")
+    .normalizeEmail(),
+
+  body("otp")
+    .isString()
+    .withMessage("OTP must be a string")
+    .isLength({ min: 6, max: 6 })
+    .withMessage("OTP must be 6 digits"),
+
+  handleValidationErrors,
+];
+
+// Resend OTP Validation
+const resendOtpValidation = [
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required")
+    .normalizeEmail(),
+
+  handleValidationErrors,
+];
+
+// Verify Login OTP Validation
+const verifyLoginOtpValidation = [
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required")
+    .normalizeEmail(),
+
+  body("otp")
+    .isString()
+    .withMessage("OTP must be a string")
+    .isLength({ min: 6, max: 6 })
+    .withMessage("OTP must be 6 digits"),
 
   handleValidationErrors,
 ];
@@ -230,6 +301,9 @@ const userUpdateValidation = [
 module.exports = {
   registrationValidation,
   loginValidation,
+  verifyEmailOtpValidation,
+  resendOtpValidation,
+  verifyLoginOtpValidation,
   qrValidation,
   bookValidation,
   borrowBookValidation,

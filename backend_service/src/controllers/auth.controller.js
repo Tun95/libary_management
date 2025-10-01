@@ -13,8 +13,11 @@ class AuthController {
 
       return sendResponse(res, 201, {
         status: STATUS.SUCCESS,
-        message: ERROR_MESSAGES.REGISTRATION_SUCCESS,
-        data: result,
+        message: result.message,
+        data: {
+          user: result.user,
+          otp_sent: true,
+        },
       });
     } catch (error) {
       await logger.error(error, {
@@ -24,15 +27,82 @@ class AuthController {
       });
 
       if (error.code === 11000) {
+        const field = Object.keys(error.keyPattern)[0];
+        const message =
+          field === "matric_number"
+            ? ERROR_MESSAGES.DUPLICATE_MATRIC
+            : field === "email"
+            ? ERROR_MESSAGES.DUPLICATE_EMAIL
+            : ERROR_MESSAGES.DUPLICATE_ENTRY;
+
         return sendResponse(res, 409, {
           status: STATUS.FAILED,
-          message: ERROR_MESSAGES.DUPLICATE_MATRIC,
+          message: message,
         });
       }
 
       return sendResponse(res, 500, {
         status: STATUS.FAILED,
         message: ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Verify email OTP
+  async verifyEmailOtp(req, res) {
+    try {
+      const { email, otp } = req.body;
+      const result = await authService.verifyEmailOtp(email, otp);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "AuthController",
+        method: "verifyEmailOtp",
+        email: req.body.email,
+      });
+
+      const statusCode = error.message === "Invalid or expired OTP" ? 400 : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Resend verification OTP
+  async resendVerificationOtp(req, res) {
+    try {
+      const { email } = req.body;
+      const result = await authService.resendVerificationOtp(email);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: result.message,
+        data: { otp_sent: true },
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "AuthController",
+        method: "resendVerificationOtp",
+        email: req.body.email,
+      });
+
+      const statusCode =
+        error.message === "User not found"
+          ? 404
+          : error.message === "Account is already verified"
+          ? 400
+          : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
       });
     }
   }
@@ -45,7 +115,7 @@ class AuthController {
 
       return sendResponse(res, 200, {
         status: STATUS.SUCCESS,
-        message: ERROR_MESSAGES.LOGIN_SUCCESS,
+        message: result.message,
         data: result,
       });
     } catch (error) {
@@ -61,6 +131,40 @@ class AuthController {
           : error.message === ERROR_MESSAGES.ACCOUNT_DEACTIVATED
           ? 403
           : error.message === ERROR_MESSAGES.ID_EXPIRED
+          ? 403
+          : error.message === "Please verify your email before logging in"
+          ? 403
+          : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Verify login OTP for staff
+  async verifyLoginOtp(req, res) {
+    try {
+      const { email, otp } = req.body;
+      const result = await authService.verifyLoginOtp(email, otp);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: "Login successful",
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "AuthController",
+        method: "verifyLoginOtp",
+        email: req.body.email,
+      });
+
+      const statusCode =
+        error.message === "Invalid or expired OTP"
+          ? 400
+          : error.message === "OTP verification is only for staff members"
           ? 403
           : 500;
 

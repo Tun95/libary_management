@@ -11,6 +11,9 @@ const {
   returnBookValidation,
   borrowBookValidation,
   userUpdateValidation,
+  verifyLoginOtpValidation,
+  resendOtpValidation,
+  verifyEmailOtpValidation,
 } = require("../utils/validators");
 
 setupRoutes = (server) => {
@@ -19,11 +22,21 @@ setupRoutes = (server) => {
     .route("/auth/register")
     .post(registrationValidation, authController.register);
 
+  server
+    .route("/auth/verify-email-otp")
+    .post(verifyEmailOtpValidation, authController.verifyEmailOtp);
+
+  server
+    .route("/auth/resend-verification-otp")
+    .post(resendOtpValidation, authController.resendVerificationOtp);
+
   server.route("/auth/login").post(loginValidation, authController.login);
 
   server
-    .route("/auth/verify-qr")
-    .post(qrValidation, authController.verifyQR);
+    .route("/auth/verify-login-otp")
+    .post(verifyLoginOtpValidation, authController.verifyLoginOtp);
+
+  server.route("/auth/verify-qr").post(qrValidation, authController.verifyQR);
 
   // Book Routes
   server

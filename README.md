@@ -1,2 +1,2 @@
 <!-- Unilorin Project -->
-**Libary Management**
+**Library Management**

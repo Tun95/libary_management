@@ -21,7 +21,7 @@ const {
 } = require("../utils/validators");
 
 setupRoutes = (server) => {
-  // Auth Routes
+  // AUTH Routes
   server
     .route("/auth/register")
     .post(registrationValidation, authController.register);
@@ -59,7 +59,7 @@ setupRoutes = (server) => {
     .route("/api/auth/change-password")
     .post(changePasswordValidation, authController.changePassword);
 
-  // Book Routes
+  // BOOK Routes
   server
     .route("/api/books")
     .get(bookController.getBooks)
@@ -79,7 +79,7 @@ setupRoutes = (server) => {
     .route("/api/books/return")
     .post(returnBookValidation, bookController.returnBook);
 
-  // User Routes
+  // USER Routes
   server.route("/api/users").get(isAdmin, userController.getUsers);
 
   server

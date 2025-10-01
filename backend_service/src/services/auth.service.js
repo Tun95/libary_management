@@ -488,12 +488,20 @@ class AuthService {
         throw new Error("Account is not active");
       }
 
+      // Check if new password is same as old password
+      if (await user.isPasswordMatch(newPassword)) {
+        throw new Error("New password cannot be the same as the old password");
+      }
+
       // Update password
       user.password = newPassword;
       user.password_reset_token = undefined;
       user.password_reset_expires = undefined;
       user.password_change_at = Date.now();
       await user.save();
+
+      // Send password changed notification
+      await emailService.sendPasswordChangedEmail(user.email, user.full_name);
 
       await logger.info("Password reset successfully", {
         service: "AuthService",
@@ -536,10 +544,18 @@ class AuthService {
         throw new Error("Account is not active");
       }
 
+      // Check if new password is same as old password
+      if (await user.isPasswordMatch(newPassword)) {
+        throw new Error("New password cannot be the same as the old password");
+      }
+
       // Update password
       user.password = newPassword;
       user.password_change_at = Date.now();
       await user.save();
+
+      // Send password changed notification
+      await emailService.sendPasswordChangedEmail(user.email, user.full_name);
 
       await logger.info("Password changed successfully", {
         service: "AuthService",
@@ -565,7 +581,6 @@ class AuthService {
       throw error;
     }
   }
-
   // Verify Reset Token
   async verifyResetToken(token) {
     try {

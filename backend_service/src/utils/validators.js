@@ -44,7 +44,7 @@ const registrationValidation = [
     .withMessage(
       "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&+)"
     ),
-    
+
   body("email")
     .isEmail()
     .withMessage("Valid email is required")
@@ -212,8 +212,14 @@ const resetPasswordValidation = [
   body("new_password")
     .isString()
     .withMessage("New password must be a string")
-    .isLength({ min: 6 })
-    .withMessage("New password must be at least 6 characters long"),
+    .isLength({ min: 8 })
+    .withMessage("New password must be at least 8 characters long")
+    .matches(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&+])[A-Za-z\d@$!%*?&+]/
+    )
+    .withMessage(
+      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&+)"
+    ),
 
   handleValidationErrors,
 ];

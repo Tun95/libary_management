@@ -18,6 +18,7 @@ const {
   resetPasswordValidation,
   verifyResetTokenValidation,
   changePasswordValidation,
+  requireActiveUser,
 } = require("../utils/validators");
 
 setupRoutes = (server) => {
@@ -57,7 +58,11 @@ setupRoutes = (server) => {
 
   server
     .route("/api/auth/change-password")
-    .post(changePasswordValidation, authController.changePassword);
+    .post(
+      changePasswordValidation,
+      requireActiveUser,
+      authController.changePassword
+    );
 
   // BOOK Routes
   server
@@ -68,8 +73,8 @@ setupRoutes = (server) => {
   server
     .route("/api/books/:id")
     .get(bookController.getBook)
-    .put(isAdmin, bookValidation, bookController.updateBook)
-    .delete(isAdmin, bookController.deleteBook);
+    .put(isAdmin, requireActiveUser, bookValidation, bookController.updateBook)
+    .delete(isAdmin, requireActiveUser, bookController.deleteBook);
 
   server
     .route("/api/books/borrow")
@@ -80,12 +85,14 @@ setupRoutes = (server) => {
     .post(returnBookValidation, bookController.returnBook);
 
   // USER Routes
-  server.route("/api/users").get(isAdmin, userController.getUsers);
+  server
+    .route("/api/admin/users")
+    .get(isAdmin, requireActiveUser, userController.getUsers);
 
   server
     .route("/api/users/:id")
-    .get(userController.getUser)
-    .put(userUpdateValidation, userController.updateUser);
+    .get(requireActiveUser, userController.getUser)
+    .put(userUpdateValidation, requireActiveUser, userController.updateUser);
 
   server.get("/health", async (req, res) => {
     res.status(200).json({ status: HEALTH_STATUS.UP });

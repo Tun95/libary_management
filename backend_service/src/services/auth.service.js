@@ -581,6 +581,7 @@ class AuthService {
       throw error;
     }
   }
+  
   // Verify Reset Token
   async verifyResetToken(token) {
     try {

@@ -4,6 +4,57 @@ const User = require("../../models/user.model");
 const Book = require("../../models/book.model");
 const { STATUS, ERROR_MESSAGES } = require("../constants/constants");
 
+// Check User Status Middleware
+const checkUserStatus = (options = {}) => {
+  const {
+    checkVerified = true,
+    allowedStatuses = ["active"],
+    checkBlocked = true,
+  } = options;
+
+  return async (req, res, next) => {
+    try {
+      const user = req.user;
+
+      if (!user) {
+        return sendResponse(res, 401, {
+          status: STATUS.FAILED,
+          message: ERROR_MESSAGES.TOKEN_INVALID,
+        });
+      }
+
+      // Check if account is blocked/closed
+      if (checkBlocked && !allowedStatuses.includes(user.status)) {
+        return sendResponse(res, 403, {
+          status: STATUS.FAILED,
+          message: `Account is ${user.status}. Please contact support.`,
+        });
+      }
+
+      // Check if account is verified
+      if (checkVerified && !user.is_account_verified) {
+        return sendResponse(res, 403, {
+          status: STATUS.FAILED,
+          message: "Please verify your account to access this resource",
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error("User status check error:", error);
+      return sendResponse(res, 500, {
+        status: STATUS.FAILED,
+        message: "Error checking user status",
+      });
+    }
+  };
+};
+
+// Specific middleware variations for common use cases
+const requireActiveUser = checkUserStatus(); // Default: active + verified
+const requireActiveOnly = checkUserStatus({ checkVerified: false }); // Active but not necessarily verified
+const requireVerifiedOnly = checkUserStatus({ checkBlocked: false }); // Verified but status can be anything
+
 // Common validation error handler
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
@@ -370,6 +421,10 @@ const userUpdateValidation = [
 ];
 
 module.exports = {
+  requireActiveUser,
+  requireActiveOnly,
+  requireVerifiedOnly,
+
   registrationValidation,
   loginValidation,
   verifyEmailOtpValidation,

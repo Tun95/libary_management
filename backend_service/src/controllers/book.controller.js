@@ -66,7 +66,7 @@ class BookController {
     }
   }
 
-  // Add new book
+  // Add new book (admin only)
   async addBook(req, res) {
     try {
       const bookData = req.body;
@@ -97,7 +97,7 @@ class BookController {
     }
   }
 
-  // Update book
+  // Update book (admin only)
   async updateBook(req, res) {
     try {
       const { id } = req.params;
@@ -130,7 +130,7 @@ class BookController {
     }
   }
 
-  // Delete book
+  // Delete book (admin only)
   async deleteBook(req, res) {
     try {
       const { id } = req.params;

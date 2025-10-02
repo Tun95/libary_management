@@ -49,7 +49,6 @@ const userSchema = new mongoose.Schema(
     },
     qr_code: {
       type: String, // QR code data
-      unique: true,
     },
     status: {
       type: String,

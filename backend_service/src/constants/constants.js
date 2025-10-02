@@ -31,7 +31,7 @@ const ERROR_MESSAGES = {
   QR_INVALID: "Invalid QR code format",
   TOKEN_REQUIRED: "Access denied. No token provided.",
   TOKEN_INVALID: "Token is not valid.",
-  UNAUTHORIZED: "Unauthorized user",
+  UNAUTHORIZED: "Unauthorized access",
 
   // User messages
   USER_NOT_FOUND: "User not found",

@@ -100,6 +100,7 @@ setupRoutes = (server) => {
   server
     .route("/api/admin/users")
     .get(isAdmin, requireActiveUser, userController.getUsers);
+    
   server
     .route("/api/admin/users/stats")
     .get(isAdmin, requireActiveUser, userController.getUserStats);

@@ -41,19 +41,35 @@ class AuthService {
       let qrData = null;
       let qrCodeImage = null;
 
-      // Generate QR code only for students
-      if (!isStaff) {
+      // Generate QR code for ALL users (both students and staff)
+      if (isStaff) {
+        // Staff QR code data
         qrData = {
+          type: "staff",
+          staff_id: userData.matric_number.toUpperCase(),
+          full_name: userData.full_name,
+          roles: userData.roles,
+          email: userData.email.toLowerCase(),
+          timestamp: new Date().toISOString(),
+          access_level: userData.roles.includes("admin")
+            ? "admin"
+            : "librarian",
+        };
+      } else {
+        // Student QR code data
+        qrData = {
+          type: "student",
           matric_number: userData.matric_number.toUpperCase(),
           full_name: userData.full_name,
           faculty: userData.faculty,
           department: userData.department,
+          email: userData.email.toLowerCase(),
           id_expiration: userData.id_expiration,
           timestamp: new Date().toISOString(),
         };
-
-        qrCodeImage = await this.generateQRCode(qrData);
       }
+
+      qrCodeImage = await this.generateQRCode(qrData);
 
       // Create new user
       const user = new User({
@@ -101,9 +117,8 @@ class AuthService {
 
       return {
         user: userResponse,
-        message: isStaff
-          ? "Registration successful. Please check your email for verification OTP."
-          : "Registration successful. Please check your email for verification OTP and download your ID card.",
+        message:
+          "Registration successful. Please check your email for verification OTP and download your ID card.",
       };
     } catch (error) {
       await logger.error(error, {
@@ -372,21 +387,31 @@ class AuthService {
         throw new Error(ERROR_MESSAGES.QR_INVALID);
       }
 
-      const user = await User.findOne({
-        matric_number: parsedData.matric_number,
-      });
+      let user;
+
+      // Handle different QR code types
+      if (parsedData.type === "staff") {
+        user = await User.findOne({
+          matric_number: parsedData.staff_id,
+        });
+      } else {
+        user = await User.findOne({
+          matric_number: parsedData.matric_number,
+        });
+      }
 
       if (!user) {
         throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
       }
 
-      // Check if account is active
       if (user.status !== "active") {
         throw new Error(`Account is ${user.status}. Library access denied.`);
       }
 
-      // Check if ID is valid
-      if (!user.isIdValid()) {
+      // For students, check if ID is valid
+      const isStaff =
+        user.roles.includes("librarian") || user.roles.includes("admin");
+      if (!isStaff && !user.isIdValid()) {
         throw new Error(ERROR_MESSAGES.ID_EXPIRED);
       }
 
@@ -400,6 +425,7 @@ class AuthService {
         email: user.email,
         id_expiration: user.id_expiration,
         status: user.status,
+        roles: user.roles,
         borrowed_books: user.borrowed_books,
       };
 
@@ -408,6 +434,7 @@ class AuthService {
         method: "verifyQR",
         user_id: user._id,
         matric_number: user.matric_number,
+        user_type: isStaff ? "staff" : "student",
       });
 
       return userResponse;

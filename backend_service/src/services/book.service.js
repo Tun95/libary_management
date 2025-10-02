@@ -51,6 +51,7 @@ class BookService {
           total_pages: Math.ceil(total / limit),
           current_page: parseInt(page),
           total,
+          limit: parseInt(limit),
         },
       };
     } catch (error) {

@@ -80,18 +80,18 @@ const idValidation = validateObjectId("id");
 
 // Registration Validation
 const registrationValidation = [
-  body("matric_number")
+  body("identification_code")
     .isString()
-    .withMessage("Matric number must be a string")
+    .withMessage("Identification code must be a string")
     .trim()
     .notEmpty()
-    .withMessage("Matric number is required")
+    .withMessage("Identification code is required")
     .custom(async (value, { req }) => {
       const existingUser = await User.findOne({
-        matric_number: value.toUpperCase(),
+        identification_code: value.toUpperCase(),
       });
       if (existingUser) {
-        throw new Error("Matric number already exists");
+        throw new Error("Identification code already exists");
       }
       return true;
     }),
@@ -183,12 +183,12 @@ const registrationValidation = [
 
 // Login Validation
 const loginValidation = [
-  body("matric_number")
+  body("identification_code")
     .isString()
-    .withMessage("Matric number must be a string")
+    .withMessage("Identification code must be a string")
     .trim()
     .notEmpty()
-    .withMessage("Matric number is required"),
+    .withMessage("Identification code is required"),
 
   body("password")
     .isString()

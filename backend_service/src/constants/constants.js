@@ -1,4 +1,4 @@
-// backend_service/src/constants/messages.js 
+// backend_service/src/constants/messages.js
 
 // Server Health
 const HEALTH_STATUS = {
@@ -22,8 +22,8 @@ const STATUS = {
 
 const ERROR_MESSAGES = {
   // Authentication messages
-  INVALID_CREDENTIALS: "Invalid matric number or password",
-  ID_EXPIRED: "Student ID has expired",
+  INVALID_CREDENTIALS: "Invalid identification code or password",
+  ID_EXPIRED: "ID has expired",
   ACCOUNT_DEACTIVATED: "Account is deactivated",
   REGISTRATION_SUCCESS: "User registered successfully",
   LOGIN_SUCCESS: "Login successful",
@@ -37,7 +37,7 @@ const ERROR_MESSAGES = {
   USER_NOT_FOUND: "User not found",
   USER_UPDATE_SUCCESS: "User updated successfully",
   ACCESS_DENIED: "Access denied",
-  DUPLICATE_MATRIC: "Matric number already exists",
+  DUPLICATE_IDENTIFICATION: "Identification code already exists",
   DUPLICATE_EMAIL: "Email already exists",
   DUPLICATE_ENTRY: "Duplicate entry found",
 

@@ -5,7 +5,7 @@ const crypto = require("crypto");
 
 const userSchema = new mongoose.Schema(
   {
-    matric_number: {
+    identification_code: {
       type: String,
       required: true,
       unique: true,

@@ -46,7 +46,7 @@ class AuthService {
         // Staff QR code data
         qrData = {
           type: "staff",
-          staff_id: userData.matric_number.toUpperCase(),
+          staff_id: userData.identification_code.toUpperCase(),
           full_name: userData.full_name,
           roles: userData.roles,
           email: userData.email.toLowerCase(),
@@ -59,7 +59,7 @@ class AuthService {
         // Student QR code data
         qrData = {
           type: "student",
-          matric_number: userData.matric_number.toUpperCase(),
+          identification_code: userData.identification_code.toUpperCase(),
           full_name: userData.full_name,
           faculty: userData.faculty,
           department: userData.department,
@@ -74,7 +74,7 @@ class AuthService {
       // Create new user
       const user = new User({
         ...userData,
-        matric_number: userData.matric_number.toUpperCase(),
+        identification_code: userData.identification_code.toUpperCase(),
         email: userData.email.toLowerCase(),
         qr_code: qrCodeImage,
         roles: userData.roles || ["student"],
@@ -94,7 +94,7 @@ class AuthService {
       // Return user data without password
       const userResponse = {
         _id: user._id,
-        matric_number: user.matric_number,
+        identification_code: user.identification_code,
         full_name: user.full_name,
         faculty: user.faculty,
         department: user.department,
@@ -111,7 +111,7 @@ class AuthService {
         service: "AuthService",
         method: "register",
         user_id: user._id,
-        matric_number: user.matric_number,
+        identification_code: user.identification_code,
         roles: user.roles,
       });
 
@@ -124,7 +124,7 @@ class AuthService {
       await logger.error(error, {
         service: "AuthService",
         method: "register",
-        matric_number: userData.matric_number,
+        identification_code: userData.identification_code,
       });
       throw error;
     }
@@ -218,11 +218,11 @@ class AuthService {
   }
 
   // Login user
-  async login(matric_number, password) {
+  async login(identification_code, password) {
     try {
-      // Find user by matric number
+      // Find user by identification code
       const user = await User.findOne({
-        matric_number: matric_number.toUpperCase(),
+        identification_code: identification_code.toUpperCase(),
       });
 
       if (!user || !(await user.isPasswordMatch(password))) {
@@ -263,7 +263,7 @@ class AuthService {
           service: "AuthService",
           method: "login",
           user_id: user._id,
-          matric_number: user.matric_number,
+          identification_code: user.identification_code,
           roles: user.roles,
         });
 
@@ -285,7 +285,7 @@ class AuthService {
       // Return user data without password
       const userResponse = {
         _id: user._id,
-        matric_number: user.matric_number,
+        identification_code: user.identification_code,
         full_name: user.full_name,
         faculty: user.faculty,
         department: user.department,
@@ -302,7 +302,7 @@ class AuthService {
         service: "AuthService",
         method: "login",
         user_id: user._id,
-        matric_number: user.matric_number,
+        identification_code: user.identification_code,
       });
 
       return {
@@ -313,7 +313,7 @@ class AuthService {
       await logger.error(error, {
         service: "AuthService",
         method: "login",
-        matric_number: matric_number,
+        identification_code: identification_code,
       });
       throw error;
     }
@@ -332,6 +332,10 @@ class AuthService {
         throw new Error("Invalid or expired OTP");
       }
 
+      if (user.status !== "active") {
+        throw new Error(`Account is ${user.status}. Please contact support.`);
+      }
+
       const isStaff =
         user.roles.includes("librarian") || user.roles.includes("admin");
       if (!isStaff) {
@@ -339,6 +343,7 @@ class AuthService {
       }
 
       user.last_login = new Date();
+      user.is_account_verified = true;
       user.account_verification_otp = undefined;
       user.account_verification_otp_expires = undefined;
       await user.save();
@@ -346,7 +351,7 @@ class AuthService {
       // Return user data without password
       const userResponse = {
         _id: user._id,
-        matric_number: user.matric_number,
+        identification_code: user.identification_code,
         full_name: user.full_name,
         email: user.email,
         phone: user.phone,
@@ -392,11 +397,11 @@ class AuthService {
       // Handle different QR code types
       if (parsedData.type === "staff") {
         user = await User.findOne({
-          matric_number: parsedData.staff_id,
+          identification_code: parsedData.staff_id,
         });
       } else {
         user = await User.findOne({
-          matric_number: parsedData.matric_number,
+          identification_code: parsedData.identification_code,
         });
       }
 
@@ -418,7 +423,7 @@ class AuthService {
       // Return user data without password
       const userResponse = {
         _id: user._id,
-        matric_number: user.matric_number,
+        identification_code: user.identification_code,
         full_name: user.full_name,
         faculty: user.faculty,
         department: user.department,
@@ -433,7 +438,7 @@ class AuthService {
         service: "AuthService",
         method: "verifyQR",
         user_id: user._id,
-        matric_number: user.matric_number,
+        identification_code: user.identification_code,
         user_type: isStaff ? "staff" : "student",
       });
 

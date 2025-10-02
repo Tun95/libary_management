@@ -15,7 +15,7 @@ class UserService {
       // Search filter
       if (search) {
         query.$or = [
-          { matric_number: { $regex: search, $options: "i" } },
+          { identification_code: { $regex: search, $options: "i" } },
           { full_name: { $regex: search, $options: "i" } },
           { email: { $regex: search, $options: "i" } },
         ];

@@ -23,14 +23,14 @@ class AuthController {
       await logger.error(error, {
         controller: "AuthController",
         method: "register",
-        matric_number: req.body.matric_number,
+        identification_code: req.body.identification_code,
       });
 
       if (error.code === 11000) {
         const field = Object.keys(error.keyPattern)[0];
         const message =
-          field === "matric_number"
-            ? ERROR_MESSAGES.DUPLICATE_MATRIC
+          field === "identification_code"
+            ? ERROR_MESSAGES.DUPLICATE_IDENTIFICATION
             : field === "email"
             ? ERROR_MESSAGES.DUPLICATE_EMAIL
             : ERROR_MESSAGES.DUPLICATE_ENTRY;
@@ -110,8 +110,8 @@ class AuthController {
   // Login user
   async login(req, res) {
     try {
-      const { matric_number, password } = req.body;
-      const result = await authService.login(matric_number, password);
+      const { identification_code, password } = req.body;
+      const result = await authService.login(identification_code, password);
 
       return sendResponse(res, 200, {
         status: STATUS.SUCCESS,
@@ -122,7 +122,7 @@ class AuthController {
       await logger.error(error, {
         controller: "AuthController",
         method: "login",
-        matric_number: req.body.matric_number,
+        identification_code: req.body.identification_code,
       });
 
       const statusCode =

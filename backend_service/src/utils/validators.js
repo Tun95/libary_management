@@ -3,6 +3,7 @@ const { body, param, query, validationResult } = require("express-validator");
 const User = require("../../models/user.model");
 const Book = require("../../models/book.model");
 const { STATUS, ERROR_MESSAGES } = require("../constants/constants");
+const { sendResponse } = require("./utils");
 
 // Check User Status Middleware
 const checkUserStatus = (options = {}) => {
@@ -67,6 +68,15 @@ const handleValidationErrors = (req, res, next) => {
   }
   next();
 };
+
+// Validate MongoDB ObjectId
+const validateObjectId = (paramName) => [
+  param(paramName).isMongoId().withMessage(`Invalid ${paramName} format`),
+  handleValidationErrors,
+];
+
+//ID Validation
+const idValidation = validateObjectId("id");
 
 // Registration Validation
 const registrationValidation = [
@@ -382,8 +392,57 @@ const returnBookValidation = [
   handleValidationErrors,
 ];
 
-// User Update Validation
+// Get Users Query Validation (for admin)
+const getUsersValidation = [
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer"),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100"),
+
+  query("search")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Search query must be less than 100 characters"),
+
+  query("status")
+    .optional()
+    .isIn(["active", "blocked", "closed"])
+    .withMessage("Status must be: active, blocked, or closed"),
+
+  query("role")
+    .optional()
+    .isIn(["student", "librarian", "admin"])
+    .withMessage("Role must be: student, librarian, or admin"),
+
+  query("faculty")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Faculty must be less than 100 characters"),
+
+  handleValidationErrors,
+];
+
+// Enhanced User Update Validation
 const userUpdateValidation = [
+  param("id").isMongoId().withMessage("Invalid user ID format"),
+
+  body("full_name")
+    .optional()
+    .isString()
+    .withMessage("Full name must be a string")
+    .trim()
+    .isLength({ min: 2, max: 100 })
+    .withMessage("Full name must be between 2 and 100 characters"),
+
   body("email")
     .optional()
     .isEmail()
@@ -404,7 +463,19 @@ const userUpdateValidation = [
     .optional()
     .isString()
     .withMessage("Phone must be a string")
-    .trim(),
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage("Phone must be less than 20 characters")
+    .matches(/^[\+]?[1-9][\d]{0,15}$/)
+    .withMessage("Phone number format is invalid"),
+
+  body("profile_image")
+    .optional()
+    .isString()
+    .withMessage("Profile image must be a string")
+    .trim()
+    .isURL()
+    .withMessage("Profile image must be a valid URL"),
 
   body("id_expiration")
     .optional()
@@ -417,11 +488,57 @@ const userUpdateValidation = [
       return true;
     }),
 
+  // Admin-only fields with protection
+  body("roles")
+    .optional()
+    .isArray()
+    .withMessage("Roles must be an array")
+    .custom((value) => {
+      if (!Array.isArray(value) || value.length === 0) {
+        throw new Error("Roles array cannot be empty");
+      }
+
+      const validRoles = ["student", "librarian", "admin"];
+      for (const role of value) {
+        if (!validRoles.includes(role)) {
+          throw new Error(`Invalid role: ${role}`);
+        }
+      }
+
+      // Ensure at least one role is provided
+      if (value.length === 0) {
+        throw new Error("At least one role is required");
+      }
+
+      return true;
+    }),
+
+  body("fines")
+    .optional()
+    .isNumeric()
+    .withMessage("Fines must be a number")
+    .custom((value) => {
+      if (value < 0) {
+        throw new Error("Fines cannot be negative");
+      }
+      if (value > 10000) {
+        throw new Error("Fines amount is too high");
+      }
+      return true;
+    }),
+
+  body("status")
+    .optional()
+    .isIn(["active", "blocked", "closed"])
+    .withMessage("Status must be: active, blocked, or closed"),
+
   handleValidationErrors,
 ];
 
 // User Status Validation
 const userStatusValidation = [
+  param("id").isMongoId().withMessage("Invalid user ID format"),
+
   body("status")
     .isString()
     .withMessage("Status must be a string")
@@ -435,6 +552,29 @@ const userStatusValidation = [
     .trim()
     .isLength({ max: 500 })
     .withMessage("Reason must be less than 500 characters"),
+
+  handleValidationErrors,
+];
+
+// Permanent Delete User Validation
+const permanentDeleteValidation = [
+  param("id")
+    .isMongoId()
+    .withMessage("Invalid user ID format")
+    .custom(async (value, { req }) => {
+      // Prevent admin from deleting themselves
+      if (value === req.user._id.toString()) {
+        throw new Error("Cannot delete your own account");
+      }
+
+      // Check if user exists
+      const user = await User.findById(value);
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      return true;
+    }),
 
   handleValidationErrors,
 ];
@@ -457,6 +597,11 @@ module.exports = {
   bookValidation,
   borrowBookValidation,
   returnBookValidation,
+
+  validateObjectId,
+  idValidation,
+  getUsersValidation,
+  permanentDeleteValidation,
   userUpdateValidation,
   userStatusValidation,
 

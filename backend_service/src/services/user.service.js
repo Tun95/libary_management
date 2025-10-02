@@ -58,6 +58,7 @@ class UserService {
           current_page: parseInt(page),
           total_pages: Math.ceil(total / limit),
           total,
+          limit: parseInt(limit),
         },
       };
     } catch (error) {

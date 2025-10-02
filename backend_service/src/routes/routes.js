@@ -21,6 +21,9 @@ const {
   requireActiveUser,
   requireActiveOnly,
   userStatusValidation,
+  getUsersValidation,
+  idValidation,
+  permanentDeleteValidation,
 } = require("../utils/validators");
 
 setupRoutes = (server) => {
@@ -91,16 +94,22 @@ setupRoutes = (server) => {
   server
     .route("/api/users/me")
     .get(requireActiveUser, userController.getCurrentUser);
-  server.route("/api/users/:id").get(requireActiveOnly, userController.getUser);
+
   server
     .route("/api/users/:id")
+    .get(requireActiveOnly, idValidation, userController.getUser)
     .put(requireActiveOnly, userUpdateValidation, userController.updateUser);
 
   // Admin User Management Routes
   server
     .route("/api/admin/users")
-    .get(isAdmin, requireActiveUser, userController.getUsers);
-    
+    .get(
+      isAdmin,
+      requireActiveUser,
+      getUsersValidation,
+      userController.getUsers
+    );
+
   server
     .route("/api/admin/users/stats")
     .get(isAdmin, requireActiveUser, userController.getUserStats);
@@ -112,12 +121,23 @@ setupRoutes = (server) => {
       userStatusValidation,
       userController.updateUserStatus
     );
+
   server
     .route("/api/admin/users/:id")
-    .delete(isAdmin, requireActiveUser, userController.deleteUser);
+    .delete(
+      isAdmin,
+      requireActiveUser,
+      idValidation,
+      userController.deleteUser
+    );
   server
     .route("/api/admin/users/:id/permanent")
-    .delete(isAdmin, requireActiveUser, userController.permanentlyDeleteUser);
+    .delete(
+      isAdmin,
+      requireActiveUser,
+      permanentDeleteValidation,
+      userController.permanentlyDeleteUser
+    );
 
   server.get("/health", async (req, res) => {
     res.status(200).json({ status: HEALTH_STATUS.UP });

@@ -113,6 +113,7 @@ setupRoutes = (server) => {
   server
     .route("/api/admin/users/stats")
     .get(isAdmin, requireActiveUser, userController.getUserStats);
+
   server
     .route("/api/admin/users/:id/status")
     .put(
@@ -130,6 +131,7 @@ setupRoutes = (server) => {
       idValidation,
       userController.deleteUser
     );
+    
   server
     .route("/api/admin/users/:id/permanent")
     .delete(

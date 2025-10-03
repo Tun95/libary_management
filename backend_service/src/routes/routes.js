@@ -4,6 +4,9 @@ const bookController = require("../controllers/book.controller");
 const userController = require("../controllers/user.controller");
 const isAdmin = require("../middlewares/admin.middleware");
 const {
+  requireActiveUser,
+  requireActiveOnly,
+
   registrationValidation,
   loginValidation,
   qrValidation,
@@ -22,8 +25,7 @@ const {
   resetPasswordValidation,
   verifyResetTokenValidation,
   changePasswordValidation,
-  requireActiveUser,
-  requireActiveOnly,
+
   userStatusValidation,
   getUsersValidation,
   idValidation,

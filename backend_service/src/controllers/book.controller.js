@@ -35,6 +35,45 @@ class BookController {
     }
   }
 
+  // Get all books for admin (including inactive books)
+  async getAdminBooks(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        search,
+        category,
+        available,
+        is_active,
+      } = req.query;
+
+      const result = await bookService.getAdminBooks({
+        page,
+        limit,
+        search,
+        category,
+        available,
+        is_active,
+      });
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        data: result.books,
+        pagination: result.pagination,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "getAdminBooks",
+      });
+
+      return sendResponse(res, 500, {
+        status: STATUS.FAILED,
+        message: ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
   // Get single book
   async getBook(req, res) {
     try {

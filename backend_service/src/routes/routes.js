@@ -85,6 +85,15 @@ setupRoutes = (server) => {
     );
 
   server
+    .route("/api/admin/books")
+    .get(
+      isAdmin,
+      requireActiveUser,
+      getBooksValidation,
+      bookController.getAdminBooks
+    );
+
+  server
     .route("/api/books/:id")
     .get(idValidation, bookController.getBook)
     .put(

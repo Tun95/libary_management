@@ -63,6 +63,79 @@ class BookService {
     }
   }
 
+  // Get all books for admin with advanced filtering (including inactive books)
+  async getAdminBooks({
+    page = 1,
+    limit = 10,
+    search,
+    category,
+    available,
+    is_active,
+  }) {
+    try {
+      let query = {};
+
+      // Filter by active status (if provided)
+      if (is_active !== undefined) {
+        query.is_active = is_active === "true";
+      }
+
+      // Search by title, author, or ISBN
+      if (search) {
+        query.$or = [
+          { title: { $regex: search, $options: "i" } },
+          { author: { $regex: search, $options: "i" } },
+          { isbn: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      // Filter by category
+      if (category) {
+        query.category = { $regex: category, $options: "i" };
+      }
+
+      // Filter by availability
+      if (available === "true") {
+        query.available_copies = { $gt: 0 };
+      } else if (available === "false") {
+        query.available_copies = 0;
+      }
+
+      const books = await Book.find(query)
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .sort({ is_active: -1, title: 1 }); // Sort by active first, then title
+
+      const total = await Book.countDocuments(query);
+
+      await logger.info("Admin books retrieved successfully", {
+        service: "BookService",
+        method: "getAdminBooks",
+        count: books.length,
+        total,
+        page,
+        limit,
+        filters: { search, category, available, is_active },
+      });
+
+      return {
+        books,
+        pagination: {
+          total_pages: Math.ceil(total / limit),
+          current_page: parseInt(page),
+          total,
+          limit: parseInt(limit),
+        },
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "BookService",
+        method: "getAdminBooks",
+      });
+      throw error;
+    }
+  }
+
   // Get book by ID
   async getBookById(bookId) {
     try {

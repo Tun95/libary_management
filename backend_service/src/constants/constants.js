@@ -54,6 +54,9 @@ const ERROR_MESSAGES = {
   DUPLICATE_ISBN: "ISBN already exists",
   OUTSTANDING_FINES: "User has outstanding fines. Cannot borrow books.",
   ID_EXPIRED_BORROW: "Student ID has expired. Cannot borrow books.",
+  BOOK_DELETE_SUCCESS: "Book deleted successfully",
+  BOOK_PERMANENT_DELETE_SUCCESS: "Book permanently deleted successfully",
+  BOOK_HAS_ACTIVE_BORROWS: "Cannot delete book with active borrows",
 
   // Transaction messages
   TRANSACTION_NOT_FOUND: "Transaction not found",

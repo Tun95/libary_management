@@ -7,9 +7,13 @@ const {
   registrationValidation,
   loginValidation,
   qrValidation,
-  bookValidation,
+
+  getBooksValidation,
+  bookCreateValidation,
+  bookUpdateValidation,
   returnBookValidation,
   borrowBookValidation,
+
   userUpdateValidation,
   verifyLoginOtpValidation,
   resendOtpValidation,
@@ -72,22 +76,47 @@ setupRoutes = (server) => {
   // BOOK Routes
   server
     .route("/api/books")
-    .get(bookController.getBooks)
-    .post(isAdmin, bookValidation, bookController.addBook);
+    .get(getBooksValidation, bookController.getBooks)
+    .post(
+      isAdmin,
+      requireActiveUser,
+      bookCreateValidation,
+      bookController.addBook
+    );
 
   server
     .route("/api/books/:id")
-    .get(bookController.getBook)
-    .put(isAdmin, requireActiveUser, bookValidation, bookController.updateBook)
-    .delete(isAdmin, requireActiveUser, bookController.deleteBook);
+    .get(idValidation, bookController.getBook)
+    .put(
+      isAdmin,
+      requireActiveUser,
+      idValidation,
+      bookUpdateValidation,
+      bookController.updateBook
+    )
+    .delete(
+      isAdmin,
+      requireActiveUser,
+      idValidation,
+      bookController.deleteBook
+    );
+
+  server
+    .route("/api/books/:id/permanent")
+    .delete(
+      isAdmin,
+      requireActiveUser,
+      idValidation,
+      bookController.permanentDeleteBook
+    );
 
   server
     .route("/api/books/borrow")
-    .post(borrowBookValidation, bookController.borrowBook);
+    .post(requireActiveUser, borrowBookValidation, bookController.borrowBook);
 
   server
     .route("/api/books/return")
-    .post(returnBookValidation, bookController.returnBook);
+    .post(requireActiveUser, returnBookValidation, bookController.returnBook);
 
   // ADMIN AND USER Routes
   // User Routes
@@ -131,7 +160,7 @@ setupRoutes = (server) => {
       idValidation,
       userController.deleteUser
     );
-    
+
   server
     .route("/api/admin/users/:id/permanent")
     .delete(

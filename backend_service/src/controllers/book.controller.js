@@ -102,6 +102,7 @@ class BookController {
     try {
       const { id } = req.params;
       const updateData = req.body;
+
       const book = await bookService.updateBook(id, updateData);
 
       return sendResponse(res, 200, {
@@ -123,6 +124,13 @@ class BookController {
         });
       }
 
+      if (error.message.includes("Cannot reduce total copies")) {
+        return sendResponse(res, 400, {
+          status: STATUS.FAILED,
+          message: error.message,
+        });
+      }
+
       return sendResponse(res, 500, {
         status: STATUS.FAILED,
         message: ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
@@ -130,15 +138,16 @@ class BookController {
     }
   }
 
-  // Delete book (admin only)
+  // Delete book (soft delete)
   async deleteBook(req, res) {
     try {
       const { id } = req.params;
-      await bookService.deleteBook(id);
+      const book = await bookService.deleteBook(id);
 
       return sendResponse(res, 200, {
         status: STATUS.SUCCESS,
         message: ERROR_MESSAGES.BOOK_DELETE_SUCCESS,
+        data: book,
       });
     } catch (error) {
       await logger.error(error, {
@@ -151,6 +160,54 @@ class BookController {
         return sendResponse(res, 404, {
           status: STATUS.FAILED,
           message: ERROR_MESSAGES.BOOK_NOT_FOUND,
+        });
+      }
+
+      return sendResponse(res, 500, {
+        status: STATUS.FAILED,
+        message: ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Permanent delete book (admin only)
+  async permanentDeleteBook(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await bookService.permanentDeleteBook(id);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: ERROR_MESSAGES.BOOK_PERMANENT_DELETE_SUCCESS,
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "permanentDeleteBook",
+        book_id: req.params.id,
+      });
+
+      if (error.message === ERROR_MESSAGES.BOOK_NOT_FOUND) {
+        return sendResponse(res, 404, {
+          status: STATUS.FAILED,
+          message: ERROR_MESSAGES.BOOK_NOT_FOUND,
+        });
+      }
+
+      if (error.message === ERROR_MESSAGES.BOOK_HAS_ACTIVE_BORROWS) {
+        return sendResponse(res, 400, {
+          status: STATUS.FAILED,
+          message: ERROR_MESSAGES.BOOK_HAS_ACTIVE_BORROWS,
+          data: {
+            borrow_count: error.borrowCount,
+            active_borrows: error.activeBorrows,
+            book_details: {
+              book_id: req.params.id,
+              title: error.bookTitle,
+              author: error.bookAuthor,
+            },
+          },
         });
       }
 

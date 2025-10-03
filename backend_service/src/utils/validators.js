@@ -4,6 +4,7 @@ const User = require("../../models/user.model");
 const Book = require("../../models/book.model");
 const { STATUS, ERROR_MESSAGES } = require("../constants/constants");
 const { sendResponse } = require("./utils");
+const transactionModel = require("../../models/transaction.model");
 
 // Check User Status Middleware
 const checkUserStatus = (options = {}) => {
@@ -319,21 +320,27 @@ const verifyResetTokenValidation = [
   handleValidationErrors,
 ];
 
-// Book Validation
-const bookValidation = [
+// backend_service/src/utils/validators.js
+
+// Book Creation Validation
+const bookCreateValidation = [
   body("title")
     .isString()
     .withMessage("Title must be a string")
     .trim()
     .notEmpty()
-    .withMessage("Title is required"),
+    .withMessage("Title is required")
+    .isLength({ min: 1, max: 255 })
+    .withMessage("Title must be between 1 and 255 characters"),
 
   body("author")
     .isString()
     .withMessage("Author must be a string")
     .trim()
     .notEmpty()
-    .withMessage("Author is required"),
+    .withMessage("Author is required")
+    .isLength({ min: 2, max: 100 })
+    .withMessage("Author name must be between 2 and 100 characters"),
 
   body("isbn")
     .isString()
@@ -341,6 +348,10 @@ const bookValidation = [
     .trim()
     .notEmpty()
     .withMessage("ISBN is required")
+    .isLength({ min: 10, max: 13 })
+    .withMessage("ISBN must be between 10 and 13 characters")
+    .matches(/^(?:\d{10}|\d{13})$/)
+    .withMessage("ISBN must be 10 or 13 digits")
     .custom(async (value) => {
       const existingBook = await Book.findOne({ isbn: value });
       if (existingBook) {
@@ -354,28 +365,248 @@ const bookValidation = [
     .withMessage("Category must be a string")
     .trim()
     .notEmpty()
-    .withMessage("Category is required"),
+    .withMessage("Category is required")
+    .isLength({ max: 50 })
+    .withMessage("Category must be less than 50 characters"),
 
   body("total_copies")
-    .isInt({ min: 1 })
-    .withMessage("Total copies must be at least 1"),
+    .isInt({ min: 1, max: 1000 })
+    .withMessage("Total copies must be between 1 and 1000"),
+
+  body("publisher")
+    .optional()
+    .isString()
+    .withMessage("Publisher must be a string")
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Publisher must be less than 100 characters"),
+
+  body("publication_year")
+    .optional()
+    .isInt({ min: 1000, max: new Date().getFullYear() })
+    .withMessage(
+      `Publication year must be between 1000 and ${new Date().getFullYear()}`
+    ),
+
+  body("description")
+    .optional()
+    .isString()
+    .withMessage("Description must be a string")
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage("Description must be less than 1000 characters"),
+
+  body("location.shelf")
+    .optional()
+    .isString()
+    .withMessage("Shelf must be a string")
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage("Shelf must be less than 20 characters"),
+
+  body("location.row")
+    .optional()
+    .isString()
+    .withMessage("Row must be a string")
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage("Row must be less than 20 characters"),
+
+  body("image")
+    .optional()
+    .isString()
+    .withMessage("Image must be a string")
+    .trim()
+    .isURL()
+    .withMessage("Image must be a valid URL"),
+
+  handleValidationErrors,
+];
+
+// Book Update Validation
+const bookUpdateValidation = [
+  body("title")
+    .optional()
+    .isString()
+    .withMessage("Title must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Title cannot be empty")
+    .isLength({ min: 1, max: 255 })
+    .withMessage("Title must be between 1 and 255 characters"),
+
+  body("author")
+    .optional()
+    .isString()
+    .withMessage("Author must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Author cannot be empty")
+    .isLength({ min: 2, max: 100 })
+    .withMessage("Author name must be between 2 and 100 characters"),
+
+  body("isbn")
+    .optional()
+    .isString()
+    .withMessage("ISBN must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("ISBN cannot be empty")
+    .isLength({ min: 10, max: 13 })
+    .withMessage("ISBN must be between 10 and 13 characters")
+    .matches(/^(?:\d{10}|\d{13})$/)
+    .withMessage("ISBN must be 10 or 13 digits")
+    .custom(async (value, { req }) => {
+      const existingBook = await Book.findOne({ isbn: value });
+      if (existingBook && existingBook._id.toString() !== req.params.id) {
+        throw new Error("ISBN already exists");
+      }
+      return true;
+    }),
+
+  body("category")
+    .optional()
+    .isString()
+    .withMessage("Category must be a string")
+    .trim()
+    .notEmpty()
+    .withMessage("Category cannot be empty")
+    .isLength({ max: 50 })
+    .withMessage("Category must be less than 50 characters"),
+
+  body("total_copies")
+    .optional()
+    .isInt({ min: 1, max: 1000 })
+    .withMessage("Total copies must be between 1 and 1000")
+    .custom((value, { req }) => {
+      // If updating total_copies, ensure it's not less than currently borrowed copies
+      // This would be handled in the service layer, but we can add basic validation
+      if (value < 1) {
+        throw new Error("Total copies must be at least 1");
+      }
+      return true;
+    }),
+
+  body("available_copies")
+    .optional()
+    .isInt({ min: 0, max: 1000 })
+    .withMessage("Available copies must be between 0 and 1000")
+    .custom((value, { req }) => {
+      if (req.body.total_copies && value > req.body.total_copies) {
+        throw new Error("Available copies cannot exceed total copies");
+      }
+      return true;
+    }),
+
+  body("publisher")
+    .optional()
+    .isString()
+    .withMessage("Publisher must be a string")
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Publisher must be less than 100 characters"),
+
+  body("publication_year")
+    .optional()
+    .isInt({ min: 1000, max: new Date().getFullYear() })
+    .withMessage(
+      `Publication year must be between 1000 and ${new Date().getFullYear()}`
+    ),
+
+  body("description")
+    .optional()
+    .isString()
+    .withMessage("Description must be a string")
+    .trim()
+    .isLength({ max: 1000 })
+    .withMessage("Description must be less than 1000 characters"),
+
+  body("location.shelf")
+    .optional()
+    .isString()
+    .withMessage("Shelf must be a string")
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage("Shelf must be less than 20 characters"),
+
+  body("location.row")
+    .optional()
+    .isString()
+    .withMessage("Row must be a string")
+    .trim()
+    .isLength({ max: 20 })
+    .withMessage("Row must be less than 20 characters"),
+
+  body("image")
+    .optional()
+    .isString()
+    .withMessage("Image must be a string")
+    .trim()
+    .isURL()
+    .withMessage("Image must be a valid URL"),
+
+  body("is_active")
+    .optional()
+    .isBoolean()
+    .withMessage("is_active must be a boolean"),
+
+  // Validate that at least one field is provided
+  body().custom((value, { req }) => {
+    const updateFields = Object.keys(req.body);
+    if (updateFields.length === 0) {
+      throw new Error("At least one field must be provided for update");
+    }
+    return true;
+  }),
 
   handleValidationErrors,
 ];
 
 // Borrow Book Validation
 const borrowBookValidation = [
-  body("book_id").isMongoId().withMessage("Valid book ID is required"),
+  body("book_id")
+    .isMongoId()
+    .withMessage("Valid book ID is required")
+    .custom(async (value) => {
+      const book = await Book.findById(value);
+      if (!book) {
+        throw new Error("Book not found");
+      }
+      if (!book.is_active) {
+        throw new Error("Book is not available");
+      }
+      return true;
+    }),
 
-  body("user_id").isMongoId().withMessage("Valid user ID is required"),
+  body("user_id")
+    .isMongoId()
+    .withMessage("Valid user ID is required")
+    .custom(async (value) => {
+      const user = await User.findById(value);
+      if (!user) {
+        throw new Error("User not found");
+      }
+      if (user.status !== "active") {
+        throw new Error("User account is not active");
+      }
+      return true;
+    }),
 
   body("due_date")
     .optional()
     .isISO8601()
     .withMessage("Valid due date is required")
     .custom((value) => {
-      if (new Date(value) <= new Date()) {
+      const dueDate = new Date(value);
+      const today = new Date();
+      const maxDueDate = new Date();
+      maxDueDate.setDate(today.getDate() + 90); // 3 months max
+
+      if (dueDate <= today) {
         throw new Error("Due date must be in the future");
+      }
+      if (dueDate > maxDueDate) {
+        throw new Error("Due date cannot be more than 3 months from now");
       }
       return true;
     }),
@@ -383,11 +614,64 @@ const borrowBookValidation = [
   handleValidationErrors,
 ];
 
-// Return Book Validation
+// Enhanced Return Book Validation
 const returnBookValidation = [
   body("transaction_id")
     .isMongoId()
-    .withMessage("Valid transaction ID is required"),
+    .withMessage("Valid transaction ID is required")
+    .custom(async (value) => {
+      const transaction = await transactionModel.findById(value);
+      if (!transaction) {
+        throw new Error("Transaction not found");
+      }
+      if (transaction.status === "returned") {
+        throw new Error("Book already returned");
+      }
+      return true;
+    }),
+
+  handleValidationErrors,
+];
+
+// Get Books Query Validation
+const getBooksValidation = [
+  query("page")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Page must be a positive integer")
+    .toInt(),
+
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("Limit must be between 1 and 100")
+    .toInt(),
+
+  query("search")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Search query must be less than 100 characters"),
+
+  query("category")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Category must be less than 50 characters"),
+
+  query("available")
+    .optional()
+    .isIn(["true", "false"])
+    .withMessage("Available must be 'true' or 'false'"),
+
+  query("author")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ max: 100 })
+    .withMessage("Author search must be less than 100 characters"),
 
   handleValidationErrors,
 ];
@@ -594,7 +878,10 @@ module.exports = {
   resetPasswordValidation,
   changePasswordValidation,
   verifyResetTokenValidation,
-  bookValidation,
+
+  getBooksValidation,
+  bookCreateValidation,
+  bookUpdateValidation,
   borrowBookValidation,
   returnBookValidation,
 

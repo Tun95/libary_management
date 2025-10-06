@@ -401,6 +401,7 @@ class BookService {
         (book) => book.status === "borrowed"
       ).length;
 
+      // ==================================
       const MAX_BORROW_LIMIT = 5; // Configurable
       if (currentBorrowedCount >= MAX_BORROW_LIMIT) {
         throw new Error(ERROR_MESSAGES.BORROW_LIMIT_REACHED);

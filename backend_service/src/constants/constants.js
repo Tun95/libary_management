@@ -65,6 +65,19 @@ const ERROR_MESSAGES = {
   // Transaction messages
   TRANSACTION_NOT_FOUND: "Transaction not found",
 
+  // Fine Management Messages
+  FINE_PAYMENT_SUCCESS: "Fine payment processed successfully",
+  FINE_WAIVED_SUCCESS: "Fines waived successfully",
+  NO_OUTSTANDING_FINES: "No outstanding fines found",
+  CANNOT_WAIVE_FINE:
+    "Cannot waive fine - fine may already be processed or insufficient permissions",
+
+  // Payment Specific Errors
+  INSUFFICIENT_PAYMENT: "Payment amount is insufficient for the selected fines",
+  OVERPAYMENT_NOT_ALLOWED: "Payment amount cannot exceed outstanding fines",
+  INVALID_PAYMENT_AMOUNT: "Payment amount must be greater than zero",
+  PAYMENT_PROCESSING_ERROR: "Error processing payment",
+
   // Validation messages
   VALIDATION_ERROR: "Validation failed",
 

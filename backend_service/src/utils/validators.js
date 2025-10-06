@@ -4,7 +4,8 @@ const User = require("../../models/user.model");
 const Book = require("../../models/book.model");
 const { STATUS, ERROR_MESSAGES } = require("../constants/constants");
 const { sendResponse } = require("./utils");
-const transactionModel = require("../../models/transaction.model");
+const Transaction = require("../../models/transaction.model");
+const Fine = require("../../models/fine.model");
 
 // Check User Status Middleware
 const checkUserStatus = (options = {}) => {
@@ -638,7 +639,7 @@ const returnBookValidation = [
     .isMongoId()
     .withMessage("Valid transaction ID is required")
     .custom(async (value) => {
-      const transaction = await transactionModel.findById(value);
+      const transaction = await Transaction.findById(value);
       if (!transaction) {
         throw new Error("Transaction not found");
       }
@@ -647,6 +648,294 @@ const returnBookValidation = [
       }
       return true;
     }),
+
+  body("condition")
+    .optional()
+    .isIn(["excellent", "good", "fair", "poor", "damaged", "lost"])
+    .withMessage("Invalid condition rating"),
+
+  body("waive_fine")
+    .optional()
+    .isBoolean()
+    .withMessage("Waive fine must be a boolean"),
+
+  handleValidationErrors,
+];
+
+// Bulk Return Validation
+const bulkReturnValidation = [
+  body("transaction_ids")
+    .isArray({ min: 1 })
+    .withMessage("At least one transaction ID is required")
+    .custom((value) => {
+      if (value.length > 10) {
+        throw new Error("Cannot process more than 10 returns at once");
+      }
+      return true;
+    })
+    .custom(async (transactionIds) => {
+      // Validate all transaction IDs are valid MongoDB IDs
+      for (const transactionId of transactionIds) {
+        if (!mongoose.Types.ObjectId.isValid(transactionId)) {
+          throw new Error(`Invalid transaction ID: ${transactionId}`);
+        }
+      }
+
+      // Check if all transactions exist and are not already returned
+      const transactions = await Transaction.find({
+        _id: { $in: transactionIds },
+      });
+
+      if (transactions.length !== transactionIds.length) {
+        const foundIds = transactions.map((t) => t._id.toString());
+        const missingIds = transactionIds.filter(
+          (id) => !foundIds.includes(id)
+        );
+        throw new Error(`Transactions not found: ${missingIds.join(", ")}`);
+      }
+
+      // Check for already returned transactions
+      const returnedTransactions = transactions.filter(
+        (t) => t.status === "returned"
+      );
+      if (returnedTransactions.length > 0) {
+        const returnedIds = returnedTransactions.map((t) => t._id.toString());
+        throw new Error(
+          `Transactions already returned: ${returnedIds.join(", ")}`
+        );
+      }
+
+      return true;
+    }),
+
+  body("condition")
+    .optional()
+    .isIn(["excellent", "good", "fair", "poor", "damaged", "lost"])
+    .withMessage("Invalid condition rating"),
+
+  body("notes")
+    .optional()
+    .isString()
+    .isLength({ max: 500 })
+    .withMessage("Notes must be less than 500 characters"),
+
+  handleValidationErrors,
+];
+
+// Waive Fine Validation
+const waiveFineValidation = [
+  body("user_id")
+    .isMongoId()
+    .withMessage("Valid user ID is required")
+    .custom(async (value) => {
+      const user = await User.findById(value);
+      if (!user) {
+        throw new Error("User not found");
+      }
+      if (user.fines <= 0) {
+        throw new Error("User has no outstanding fines to waive");
+      }
+      return true;
+    }),
+
+  body("amount")
+    .optional()
+    .isFloat({ min: 0.01 })
+    .withMessage("Valid amount is required")
+    .custom(async (value, { req }) => {
+      if (value) {
+        const user = await User.findById(req.body.user_id);
+        if (value > user.fines) {
+          throw new Error("Waiver amount cannot exceed outstanding fines");
+        }
+      }
+      return true;
+    }),
+
+  body("transaction_ids")
+    .optional()
+    .isArray()
+    .withMessage("Transaction IDs must be an array")
+    .custom(async (transactionIds, { req }) => {
+      if (transactionIds && transactionIds.length > 0) {
+        // Validate all transaction IDs
+        for (const transactionId of transactionIds) {
+          if (!mongoose.Types.ObjectId.isValid(transactionId)) {
+            throw new Error(`Invalid transaction ID: ${transactionId}`);
+          }
+        }
+
+        // Check if transactions exist and have fines
+        const transactions = await Transaction.find({
+          _id: { $in: transactionIds },
+          user: req.body.user_id,
+        }).populate("user");
+
+        if (transactions.length !== transactionIds.length) {
+          throw new Error(
+            "Some transactions not found or don't belong to user"
+          );
+        }
+
+        // Check if transactions have fines that can be waived
+        const transactionsWithFines = transactions.filter(
+          (t) => t.fine_amount > 0
+        );
+        if (transactionsWithFines.length === 0) {
+          throw new Error("No fines found in the specified transactions");
+        }
+
+        // Check if fines are already paid/waived
+        const fines = await Fine.find({
+          transaction: { $in: transactionIds },
+          user: req.body.user_id,
+        });
+
+        const alreadyProcessedFines = fines.filter(
+          (fine) => fine.status === "paid" || fine.status === "waived"
+        );
+
+        if (alreadyProcessedFines.length > 0) {
+          const processedIds = alreadyProcessedFines.map((fine) =>
+            fine.transaction.toString()
+          );
+          throw new Error(
+            `Fines already processed for transactions: ${processedIds.join(
+              ", "
+            )}`
+          );
+        }
+      }
+      return true;
+    }),
+
+  body("reason")
+    .notEmpty()
+    .withMessage("Reason for waiver is required")
+    .isString()
+    .isLength({ min: 10, max: 500 })
+    .withMessage("Reason must be between 10 and 500 characters")
+    .custom((value) => {
+      const disallowedPatterns = [
+        /test/i,
+        /sample/i,
+        /no reason/i,
+        /asdf/i,
+        /123/i,
+      ];
+
+      if (disallowedPatterns.some((pattern) => pattern.test(value))) {
+        throw new Error("Please provide a valid reason for the waiver");
+      }
+      return true;
+    }),
+
+  body("waive_all")
+    .optional()
+    .isBoolean()
+    .withMessage("waive_all must be a boolean"),
+
+  handleValidationErrors,
+];
+
+// Enhanced Pay Fine Validation
+const payFineValidation = [
+  body("user_id")
+    .isMongoId()
+    .withMessage("Valid user ID is required")
+    .custom(async (value) => {
+      const user = await User.findById(value);
+      if (!user) {
+        throw new Error("User not found");
+      }
+      if (user.fines <= 0) {
+        throw new Error("User has no outstanding fines to pay");
+      }
+      return true;
+    }),
+
+  body("amount")
+    .isFloat({ min: 0.01 })
+    .withMessage("Valid payment amount is required")
+    .custom(async (value, { req }) => {
+      const user = await User.findById(req.body.user_id);
+
+      if (req.body.transaction_ids && req.body.transaction_ids.length > 0) {
+        // If paying specific transactions, validate amount covers those fines
+        const fines = await Fine.find({
+          _id: { $in: req.body.transaction_ids },
+          user: req.body.user_id,
+          status: { $in: ["outstanding", "overdue"] },
+        });
+
+        if (fines.length === 0) {
+          throw new Error(
+            "No outstanding fines found for the specified transactions"
+          );
+        }
+
+        const totalFines = fines.reduce((sum, fine) => sum + fine.amount, 0);
+        if (value < totalFines) {
+          throw new Error(
+            `Payment amount (${value}) is less than total fines (${totalFines}) for selected transactions`
+          );
+        }
+      } else {
+        // If paying general fines, validate amount doesn't exceed total
+        if (value > user.fines) {
+          throw new Error(
+            `Payment amount (${value}) exceeds outstanding fines (${user.fines})`
+          );
+        }
+      }
+      return true;
+    }),
+
+  body("payment_method")
+    .isIn(["cash", "credit_card", "debit_card", "online", "check"])
+    .withMessage("Valid payment method is required"),
+
+  body("transaction_ids")
+    .optional()
+    .isArray()
+    .withMessage("Transaction IDs must be an array")
+    .custom(async (transactionIds, { req }) => {
+      if (transactionIds && transactionIds.length > 0) {
+        // Validate all transaction IDs
+        for (const transactionId of transactionIds) {
+          if (!mongoose.Types.ObjectId.isValid(transactionId)) {
+            throw new Error(`Invalid transaction ID: ${transactionId}`);
+          }
+        }
+
+        // Check if fines exist and are outstanding
+        const fines = await Fine.find({
+          _id: { $in: transactionIds },
+          user: req.body.user_id,
+        });
+
+        if (fines.length !== transactionIds.length) {
+          throw new Error("Some fines not found or don't belong to user");
+        }
+
+        const outstandingFines = fines.filter(
+          (fine) => fine.status === "outstanding" || fine.status === "overdue"
+        );
+
+        if (outstandingFines.length === 0) {
+          throw new Error(
+            "No outstanding fines found in the specified transactions"
+          );
+        }
+      }
+      return true;
+    }),
+
+  body("notes")
+    .optional()
+    .isString()
+    .isLength({ max: 500 })
+    .withMessage("Notes must be less than 500 characters"),
 
   handleValidationErrors,
 ];
@@ -902,6 +1191,9 @@ module.exports = {
   bookUpdateValidation,
   borrowBookValidation,
   returnBookValidation,
+  payFineValidation,
+  waiveFineValidation,
+  bulkReturnValidation,
 
   validateObjectId,
   idValidation,

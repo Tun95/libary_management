@@ -30,6 +30,9 @@ const {
   getUsersValidation,
   idValidation,
   permanentDeleteValidation,
+  payFineValidation,
+  waiveFineValidation,
+  bulkReturnValidation,
 } = require("../utils/validators");
 
 setupRoutes = (server) => {
@@ -75,7 +78,7 @@ setupRoutes = (server) => {
       authController.changePassword
     );
 
-  // BOOK Routes
+  // Enhanced BOOK Routes
   server
     .route("/api/books")
     .get(getBooksValidation, bookController.getBooks)
@@ -121,6 +124,7 @@ setupRoutes = (server) => {
       bookController.permanentDeleteBook
     );
 
+  // Enhanced borrow/return routes
   server
     .route("/api/books/borrow")
     .post(requireActiveUser, borrowBookValidation, bookController.borrowBook);
@@ -128,6 +132,41 @@ setupRoutes = (server) => {
   server
     .route("/api/books/return")
     .post(requireActiveUser, returnBookValidation, bookController.returnBook);
+
+  server
+    .route("/api/books/bulk-return")
+    .post(
+      requireActiveUser,
+      bulkReturnValidation,
+      bookController.bulkReturnBooks
+    );
+
+  // Fine management routes
+  server
+    .route("/api/fines/user/:userId")
+    .get(requireActiveUser, idValidation, bookController.getUserFines);
+
+  server
+    .route("/api/fines/pay")
+    .post(requireActiveUser, payFineValidation, bookController.payFine);
+
+  server
+    .route("/api/fines/waive")
+    .post(
+      isAdmin,
+      requireActiveUser,
+      waiveFineValidation,
+      bookController.waiveFine
+    );
+
+  // Overdue management
+  server
+    .route("/api/admin/overdue-books")
+    .get(isAdmin, requireActiveUser, bookController.getOverdueBooks);
+
+  server
+    .route("/api/admin/send-reminders")
+    .post(isAdmin, requireActiveUser, bookController.sendOverdueReminders);
 
   // ADMIN AND USER Routes
   // User Routes

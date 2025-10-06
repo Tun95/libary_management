@@ -287,7 +287,8 @@ class BookController {
           : error.message === ERROR_MESSAGES.NO_COPIES_AVAILABLE ||
             error.message === ERROR_MESSAGES.ALREADY_BORROWED ||
             error.message === ERROR_MESSAGES.ID_EXPIRED_BORROW ||
-            error.message === ERROR_MESSAGES.OUTSTANDING_FINES
+            error.message === ERROR_MESSAGES.OUTSTANDING_FINES ||
+            error.message === ERROR_MESSAGES.BORROW_LIMIT_REACHED
           ? 400
           : 500;
 
@@ -298,15 +299,20 @@ class BookController {
     }
   }
 
-  // Return book
+  // Enhanced Return book with multiple options
   async returnBook(req, res) {
     try {
-      const { transaction_id } = req.body;
-      const result = await bookService.returnBook(transaction_id);
+      const { transaction_id, condition, notes, waive_fine } = req.body;
+      const result = await bookService.returnBook(
+        transaction_id,
+        condition,
+        notes,
+        waive_fine
+      );
 
       return sendResponse(res, 200, {
         status: STATUS.SUCCESS,
-        message: ERROR_MESSAGES.RETURN_SUCCESS,
+        message: result.message || ERROR_MESSAGES.RETURN_SUCCESS,
         data: result,
       });
     } catch (error) {
@@ -319,11 +325,202 @@ class BookController {
       const statusCode =
         error.message === ERROR_MESSAGES.TRANSACTION_NOT_FOUND
           ? 404
-          : error.message === ERROR_MESSAGES.ALREADY_RETURNED
+          : error.message === ERROR_MESSAGES.ALREADY_RETURNED ||
+            error.message === ERROR_MESSAGES.CANNOT_WAIVE_FINE
           ? 400
           : 500;
 
       return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Bulk return books
+  async bulkReturnBooks(req, res) {
+    try {
+      const { transaction_ids } = req.body;
+      const results = await bookService.bulkReturnBooks(transaction_ids);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: `Processed ${results.processed} returns successfully`,
+        data: results,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "bulkReturnBooks",
+      });
+
+      return sendResponse(res, 500, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Get user fines
+  async getUserFines(req, res) {
+    try {
+      const { userId } = req.params;
+      const fines = await bookService.getUserFines(userId);
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        data: fines,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "getUserFines",
+        user_id: req.params.userId,
+      });
+
+      if (error.message === ERROR_MESSAGES.USER_NOT_FOUND) {
+        return sendResponse(res, 404, {
+          status: STATUS.FAILED,
+          message: ERROR_MESSAGES.USER_NOT_FOUND,
+        });
+      }
+
+      return sendResponse(res, 500, {
+        status: STATUS.FAILED,
+        message: ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Pay fine
+  async payFine(req, res) {
+    try {
+      const { user_id, amount, payment_method, transaction_ids, notes } =
+        req.body;
+      const result = await bookService.payFine(
+        user_id,
+        amount,
+        payment_method,
+        transaction_ids,
+        notes
+      );
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: ERROR_MESSAGES.FINE_PAYMENT_SUCCESS,
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "payFine",
+        user_id: req.body.user_id,
+      });
+
+      const statusCode =
+        error.message === ERROR_MESSAGES.USER_NOT_FOUND ||
+        error.message === ERROR_MESSAGES.TRANSACTION_NOT_FOUND
+          ? 404
+          : error.message === ERROR_MESSAGES.INSUFFICIENT_PAYMENT ||
+            error.message === ERROR_MESSAGES.NO_OUTSTANDING_FINES
+          ? 400
+          : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Waive fine (admin only)
+  async waiveFine(req, res) {
+    try {
+      const { user_id, amount, transaction_ids, reason } = req.body;
+      const result = await bookService.waiveFine(
+        user_id,
+        amount,
+        transaction_ids,
+        reason
+      );
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: ERROR_MESSAGES.FINE_WAIVED_SUCCESS,
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "waiveFine",
+        user_id: req.body.user_id,
+      });
+
+      const statusCode =
+        error.message === ERROR_MESSAGES.USER_NOT_FOUND ||
+        error.message === ERROR_MESSAGES.TRANSACTION_NOT_FOUND
+          ? 404
+          : error.message === ERROR_MESSAGES.CANNOT_WAIVE_FINE
+          ? 400
+          : 500;
+
+      return sendResponse(res, statusCode, {
+        status: STATUS.FAILED,
+        message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Get overdue books
+  async getOverdueBooks(req, res) {
+    try {
+      const { page = 1, limit = 20, days_overdue } = req.query;
+      const result = await bookService.getOverdueBooks({
+        page,
+        limit,
+        days_overdue,
+      });
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        data: result.overdueBooks,
+        pagination: result.pagination,
+        summary: result.summary,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "getOverdueBooks",
+      });
+
+      return sendResponse(res, 500, {
+        status: STATUS.FAILED,
+        message: ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+      });
+    }
+  }
+
+  // Send overdue reminders
+  async sendOverdueReminders(req, res) {
+    try {
+      const { user_ids, reminder_type } = req.body;
+      const result = await bookService.sendOverdueReminders(
+        user_ids,
+        reminder_type
+      );
+
+      return sendResponse(res, 200, {
+        status: STATUS.SUCCESS,
+        message: `Reminders sent to ${result.sent} users`,
+        data: result,
+      });
+    } catch (error) {
+      await logger.error(error, {
+        controller: "BookController",
+        method: "sendOverdueReminders",
+      });
+
+      return sendResponse(res, 500, {
         status: STATUS.FAILED,
         message: error.message || ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
       });

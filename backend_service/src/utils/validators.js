@@ -573,7 +573,10 @@ const borrowBookValidation = [
         throw new Error("Book not found");
       }
       if (!book.is_active) {
-        throw new Error("Book is not available");
+        throw new Error("Book is not available for borrowing");
+      }
+      if (book.available_copies < 1) {
+        throw new Error("No copies available");
       }
       return true;
     }),
@@ -581,7 +584,7 @@ const borrowBookValidation = [
   body("user_id")
     .isMongoId()
     .withMessage("Valid user ID is required")
-    .custom(async (value) => {
+    .custom(async (value, { req }) => {
       const user = await User.findById(value);
       if (!user) {
         throw new Error("User not found");
@@ -589,6 +592,21 @@ const borrowBookValidation = [
       if (user.status !== "active") {
         throw new Error("User account is not active");
       }
+      if (!user.isIdValid()) {
+        throw new Error("User ID has expired");
+      }
+      if (user.fines > 0) {
+        throw new Error("User has outstanding fines");
+      }
+
+      // Check borrow limit
+      const borrowedCount = user.borrowed_books.filter(
+        (book) => book.status === "borrowed"
+      ).length;
+      if (borrowedCount >= 5) {
+        throw new Error("User has reached maximum borrow limit");
+      }
+
       return true;
     }),
 

@@ -391,9 +391,19 @@ class BookService {
         throw new Error(ERROR_MESSAGES.ID_EXPIRED_BORROW);
       }
 
-      // Check if user has any fines
+      // Check if user has outstanding fines
       if (user.fines > 0) {
         throw new Error(ERROR_MESSAGES.OUTSTANDING_FINES);
+      }
+
+      // Check if user has reached maximum borrow limit
+      const currentBorrowedCount = user.borrowed_books.filter(
+        (book) => book.status === "borrowed"
+      ).length;
+
+      const MAX_BORROW_LIMIT = 5; // Configurable
+      if (currentBorrowedCount >= MAX_BORROW_LIMIT) {
+        throw new Error(ERROR_MESSAGES.BORROW_LIMIT_REACHED);
       }
 
       // Check if user already has this book borrowed
@@ -407,25 +417,43 @@ class BookService {
         throw new Error(ERROR_MESSAGES.ALREADY_BORROWED);
       }
 
+      // Calculate due date (default 2 weeks)
+      const calculatedDueDate =
+        dueDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+      // Validate due date is reasonable
+      const maxDueDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 3 months max
+      if (calculatedDueDate > maxDueDate) {
+        throw new Error("Due date cannot be more than 3 months from now");
+      }
+
       // Create transaction
       const transaction = new Transaction({
         user: userId,
         book: bookId,
-        due_date: dueDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // Default 2 weeks
+        due_date: calculatedDueDate,
       });
 
-      // Update book available copies
-      book.available_copies -= 1;
+      // Update book available copies using atomic operation
+      const updatedBook = await Book.findByIdAndUpdate(
+        bookId,
+        { $inc: { available_copies: -1 } },
+        { new: true }
+      );
+
+      if (!updatedBook) {
+        throw new Error("Failed to update book availability");
+      }
 
       // Add to user's borrowed books
       user.borrowed_books.push({
         book_id: bookId,
         borrow_date: new Date(),
-        due_date: transaction.due_date,
+        due_date: calculatedDueDate,
         status: "borrowed",
       });
 
-      await Promise.all([transaction.save(), book.save(), user.save()]);
+      await Promise.all([transaction.save(), user.save()]);
 
       await logger.info("Book borrowed successfully", {
         service: "BookService",
@@ -433,6 +461,7 @@ class BookService {
         book_id: bookId,
         user_id: userId,
         transaction_id: transaction._id,
+        due_date: calculatedDueDate,
       });
 
       return transaction;
@@ -447,12 +476,21 @@ class BookService {
     }
   }
 
-  // Return book
-  async returnBook(transactionId) {
+  // Return book with proper fine calculation
+  async returnBook(
+    transactionId,
+    condition = "good",
+    notes = "",
+    waiveFine = false
+  ) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
       const transaction = await Transaction.findById(transactionId)
         .populate("user")
-        .populate("book");
+        .populate("book")
+        .session(session);
 
       if (!transaction) {
         throw new Error(ERROR_MESSAGES.TRANSACTION_NOT_FOUND);
@@ -462,46 +500,101 @@ class BookService {
         throw new Error(ERROR_MESSAGES.ALREADY_RETURNED);
       }
 
-      // Calculate fine if overdue
+      const returnDate = new Date();
+      const isOverdue = returnDate > transaction.due_date;
+
+      // Calculate fine only if book is overdue and not waived
       let fine_amount = 0;
-      if (new Date() > transaction.due_date) {
-        const daysOverdue = Math.ceil(
-          (new Date() - transaction.due_date) / (1000 * 60 * 60 * 24)
-        );
-        fine_amount = daysOverdue * 5; // $5 per day fine
+      let fine_waived = false;
+
+      if (isOverdue && !waiveFine) {
+        fine_amount = this.calculateFine(transaction.due_date, returnDate);
+      } else if (isOverdue && waiveFine) {
+        fine_waived = true;
+        fine_amount = this.calculateFine(transaction.due_date, returnDate);
       }
 
+      // Check for damage fines
+      const damageFine = this.calculateDamageFine(condition);
+      fine_amount += damageFine;
+
       // Update transaction
-      transaction.return_date = new Date();
-      transaction.status = fine_amount > 0 ? "overdue" : "returned";
+      transaction.return_date = returnDate;
+      transaction.status = isOverdue ? "overdue" : "returned";
       transaction.fine_amount = fine_amount;
+      transaction.condition_on_return = condition;
+      transaction.return_notes = notes;
+      transaction.fine_waived = fine_waived;
 
       // Update book available copies
-      const book = await Book.findById(transaction.book._id);
-      book.available_copies += 1;
+      const book = await Book.findByIdAndUpdate(
+        transaction.book._id,
+        { $inc: { available_copies: 1 } },
+        { new: true, session }
+      );
 
-      // Update user's borrowed books and fines
-      const user = await User.findById(transaction.user._id);
-      const borrowedBook = user.borrowed_books.find(
+      if (!book) {
+        throw new Error("Book not found during return process");
+      }
+
+      // Update user's borrowed books
+      const user = await User.findById(transaction.user._id).session(session);
+      const borrowedBookIndex = user.borrowed_books.findIndex(
         (b) =>
           b.book_id.toString() === transaction.book._id.toString() &&
           b.status === "borrowed"
       );
 
-      if (borrowedBook) {
-        borrowedBook.return_date = new Date();
-        borrowedBook.status = fine_amount > 0 ? "overdue" : "returned";
+      if (borrowedBookIndex !== -1) {
+        user.borrowed_books[borrowedBookIndex].return_date = returnDate;
+        user.borrowed_books[borrowedBookIndex].status = isOverdue
+          ? "overdue"
+          : "returned";
       }
 
-      user.fines += fine_amount;
+      // Create fine record if applicable
+      if (fine_amount > 0) {
+        const fine = new Fine({
+          user: user._id,
+          transaction: transaction._id,
+          amount: fine_amount,
+          reason: fine_waived
+            ? `Overdue return (waived) - Condition: ${condition}`
+            : `Overdue return - Condition: ${condition}`,
+          status: fine_waived ? "waived" : "outstanding",
+          due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days to pay
+          waived_by: fine_waived ? req.user?._id : null,
+          waived_reason: fine_waived ? "Admin waiver" : null,
+        });
+        await fine.save({ session });
 
-      await Promise.all([transaction.save(), book.save(), user.save()]);
+        // Only add to user fines if not waived
+        if (!fine_waived) {
+          user.fines += fine_amount;
+        }
+      }
+
+      await Promise.all([transaction.save(), user.save()]);
+      await session.commitTransaction();
+
+      // Generate appropriate message
+      let message = "Book returned successfully";
+      if (fine_amount > 0 && fine_waived) {
+        message = `Book returned. Fine of $${fine_amount} waived.`;
+      } else if (fine_amount > 0) {
+        message = `Book returned overdue. Fine: $${fine_amount}`;
+      } else if (damageFine > 0) {
+        message = `Book returned with damage. Fine: $${damageFine}`;
+      }
 
       await logger.info("Book returned successfully", {
         service: "BookService",
         method: "returnBook",
         transaction_id: transactionId,
+        is_overdue: isOverdue,
         fine_amount,
+        fine_waived,
+        condition,
         user_id: user._id,
         book_id: book._id,
       });
@@ -509,15 +602,483 @@ class BookService {
       return {
         transaction,
         fine_amount,
+        fine_waived,
+        is_overdue: isOverdue,
+        damage_fine: damageFine,
+        condition,
+        message,
       };
     } catch (error) {
+      await session.abortTransaction();
       await logger.error(error, {
         service: "BookService",
         method: "returnBook",
         transaction_id: transactionId,
       });
       throw error;
+    } finally {
+      session.endSession();
     }
+  }
+
+  // Bulk return books
+  async bulkReturnBooks(transactionIds) {
+    const results = {
+      processed: 0,
+      successful: [],
+      failed: [],
+      total_fines: 0,
+    };
+
+    for (const transactionId of transactionIds) {
+      try {
+        const result = await this.returnBook(transactionId);
+        results.successful.push({
+          transaction_id: transactionId,
+          result,
+        });
+        results.processed++;
+        results.total_fines += result.fine_amount || 0;
+      } catch (error) {
+        results.failed.push({
+          transaction_id: transactionId,
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  // Get user fines with detailed breakdown
+  async getUserFines(userId) {
+    try {
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
+      }
+
+      const outstandingFines = await Fine.find({
+        user: userId,
+        status: { $in: ["outstanding", "overdue"] },
+      }).populate("transaction");
+
+      const paidFines = await Fine.find({
+        user: userId,
+        status: "paid",
+      }).populate("transaction");
+
+      const waivedFines = await Fine.find({
+        user: userId,
+        status: "waived",
+      }).populate("transaction");
+
+      const totalOutstanding = outstandingFines.reduce(
+        (sum, fine) => sum + fine.amount,
+        0
+      );
+      const totalPaid = paidFines.reduce((sum, fine) => sum + fine.amount, 0);
+      const totalWaived = waivedFines.reduce(
+        (sum, fine) => sum + fine.amount,
+        0
+      );
+
+      return {
+        user: {
+          _id: user._id,
+          full_name: user.full_name,
+          identification_code: user.identification_code,
+          current_fines: user.fines,
+        },
+        fines: {
+          outstanding: outstandingFines,
+          paid: paidFines,
+          waived: waivedFines,
+        },
+        summary: {
+          total_outstanding: totalOutstanding,
+          total_paid: totalPaid,
+          total_waived: totalWaived,
+          count_outstanding: outstandingFines.length,
+          count_paid: paidFines.length,
+          count_waived: waivedFines.length,
+        },
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "BookService",
+        method: "getUserFines",
+        user_id: userId,
+      });
+      throw error;
+    }
+  }
+
+  // Pay fine with transaction tracking
+  async payFine(
+    userId,
+    amount,
+    paymentMethod,
+    transactionIds = [],
+    notes = ""
+  ) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const user = await User.findById(userId).session(session);
+      if (!user) {
+        throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
+      }
+
+      if (user.fines === 0) {
+        throw new Error(ERROR_MESSAGES.NO_OUTSTANDING_FINES);
+      }
+
+      if (amount > user.fines) {
+        throw new Error(ERROR_MESSAGES.OVERPAYMENT_NOT_ALLOWED);
+      }
+
+      if (amount <= 0) {
+        throw new Error(ERROR_MESSAGES.INVALID_PAYMENT_AMOUNT);
+      }
+
+      // Update specific fines if transaction IDs provided
+      let paidFines = [];
+      if (transactionIds.length > 0) {
+        const fines = await Fine.find({
+          _id: { $in: transactionIds },
+          user: userId,
+          status: { $in: ["outstanding", "overdue"] },
+        }).session(session);
+
+        const totalFineAmount = fines.reduce(
+          (sum, fine) => sum + fine.amount,
+          0
+        );
+
+        if (amount < totalFineAmount) {
+          throw new Error(ERROR_MESSAGES.INSUFFICIENT_PAYMENT);
+        }
+
+        // Mark fines as paid
+        for (const fine of fines) {
+          fine.status = "paid";
+          fine.paid_date = new Date();
+          fine.payment_method = paymentMethod;
+          fine.payment_notes = notes;
+          await fine.save({ session });
+          paidFines.push(fine);
+        }
+      }
+
+      // Update user's fine balance
+      user.fines -= amount;
+      if (user.fines < 0) user.fines = 0;
+
+      // Create payment record
+      const paymentRecord = new FinePayment({
+        user: userId,
+        amount,
+        payment_method: paymentMethod,
+        transaction_ids: transactionIds,
+        notes,
+        paid_fines: paidFines.map((fine) => fine._id),
+      });
+      await paymentRecord.save({ session });
+
+      await Promise.all([user.save()]);
+      await session.commitTransaction();
+
+      await logger.info("Fine payment processed successfully", {
+        service: "BookService",
+        method: "payFine",
+        user_id: userId,
+        amount,
+        payment_method: paymentMethod,
+        remaining_fines: user.fines,
+      });
+
+      return {
+        user: {
+          _id: user._id,
+          full_name: user.full_name,
+          fines_remaining: user.fines,
+        },
+        payment: {
+          amount,
+          payment_method: paymentMethod,
+          paid_fines: paidFines,
+        },
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      await logger.error(error, {
+        service: "BookService",
+        method: "payFine",
+        user_id: userId,
+      });
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  // Waive fine (admin only)
+  async waiveFine(userId, amount, transactionIds = [], reason = "") {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const user = await User.findById(userId).session(session);
+      if (!user) {
+        throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
+      }
+
+      if (user.fines === 0) {
+        throw new Error(ERROR_MESSAGES.NO_OUTSTANDING_FINES);
+      }
+
+      let waivedFines = [];
+      let totalWaived = 0;
+
+      if (transactionIds.length > 0) {
+        // Waive specific fines
+        const fines = await Fine.find({
+          _id: { $in: transactionIds },
+          user: userId,
+          status: { $in: ["outstanding", "overdue"] },
+        }).session(session);
+
+        for (const fine of fines) {
+          fine.status = "waived";
+          fine.waived_by = req.user?._id;
+          fine.waived_reason = reason;
+          fine.waived_at = new Date();
+          await fine.save({ session });
+          waivedFines.push(fine);
+          totalWaived += fine.amount;
+        }
+      } else {
+        // Waive general amount
+        totalWaived = Math.min(amount, user.fines);
+      }
+
+      // Update user's fine balance
+      user.fines -= totalWaived;
+      if (user.fines < 0) user.fines = 0;
+
+      await user.save({ session });
+      await session.commitTransaction();
+
+      await logger.info("Fines waived successfully", {
+        service: "BookService",
+        method: "waiveFine",
+        user_id: userId,
+        amount_waived: totalWaived,
+        reason,
+        remaining_fines: user.fines,
+      });
+
+      return {
+        user: {
+          _id: user._id,
+          full_name: user.full_name,
+          fines_remaining: user.fines,
+        },
+        waiver: {
+          amount_waived: totalWaived,
+          reason,
+          waived_fines: waivedFines,
+        },
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      await logger.error(error, {
+        service: "BookService",
+        method: "waiveFine",
+        user_id: userId,
+      });
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  // Get overdue books with advanced filtering
+  async getOverdueBooks({ page = 1, limit = 20, days_overdue } = {}) {
+    try {
+      let query = {
+        status: { $in: ["borrowed", "overdue"] },
+        due_date: { $lt: new Date() },
+      };
+
+      if (days_overdue) {
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() - parseInt(days_overdue));
+        query.due_date.$lt = targetDate;
+      }
+
+      const overdueTransactions = await Transaction.find(query)
+        .populate("user", "full_name identification_code email phone")
+        .populate("book", "title author isbn")
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .sort({ due_date: 1 });
+
+      const total = await Transaction.countDocuments(query);
+
+      // Calculate summary statistics
+      const totalFines = overdueTransactions.reduce((sum, transaction) => {
+        return sum + this.calculateFine(transaction.due_date, new Date());
+      }, 0);
+
+      const summary = {
+        total_overdue: total,
+        total_fines_potential: totalFines,
+        average_days_overdue:
+          overdueTransactions.length > 0
+            ? overdueTransactions.reduce((sum, t) => {
+                const days = Math.ceil(
+                  (new Date() - t.due_date) / (1000 * 60 * 60 * 24)
+                );
+                return sum + days;
+              }, 0) / overdueTransactions.length
+            : 0,
+      };
+
+      return {
+        overdueBooks: overdueTransactions,
+        pagination: {
+          total_pages: Math.ceil(total / limit),
+          current_page: parseInt(page),
+          total,
+          limit: parseInt(limit),
+        },
+        summary,
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "BookService",
+        method: "getOverdueBooks",
+      });
+      throw error;
+    }
+  }
+
+  // Enhanced fine calculation with configurable rates
+  calculateFine(dueDate, returnDate) {
+    const daysOverdue = Math.ceil(
+      (returnDate - dueDate) / (1000 * 60 * 60 * 24)
+    );
+
+    // Configurable fine structure
+    const FINE_CONFIG = {
+      RATE_PER_DAY: 5, // $5 per day
+      MAX_FINE: 50, // Maximum fine cap
+      GRACE_PERIOD_DAYS: 3, // 3-day grace period
+      DAILY_CAP: 10, // Maximum per day
+    };
+
+    if (daysOverdue <= FINE_CONFIG.GRACE_PERIOD_DAYS) {
+      return 0; // No fine during grace period
+    }
+
+    const effectiveDays = daysOverdue - FINE_CONFIG.GRACE_PERIOD_DAYS;
+    const calculatedFine = Math.min(
+      effectiveDays * FINE_CONFIG.RATE_PER_DAY,
+      effectiveDays * FINE_CONFIG.DAILY_CAP
+    );
+
+    return Math.min(calculatedFine, FINE_CONFIG.MAX_FINE);
+  }
+
+  // Calculate damage fines
+  calculateDamageFine(condition) {
+    const damageRates = {
+      excellent: 0,
+      good: 0,
+      fair: 5, // Minor wear
+      poor: 15, // Significant damage
+      damaged: 30, // Requires repair/replacement
+      lost: 50, // Book lost
+    };
+
+    return damageRates[condition] || 0;
+  }
+
+  // Send overdue reminders
+  async sendOverdueReminders(userIds = [], reminderType = "email") {
+    try {
+      let query = {
+        status: { $in: ["borrowed", "overdue"] },
+        due_date: { $lt: new Date() },
+      };
+
+      if (userIds.length > 0) {
+        query.user = { $in: userIds };
+      }
+
+      const overdueTransactions = await Transaction.find(query)
+        .populate("user")
+        .populate("book");
+
+      const sentReminders = [];
+
+      for (const transaction of overdueTransactions) {
+        try {
+          // In a real implementation, you would integrate with email/SMS service
+          const reminderResult = await this.sendReminder(
+            transaction.user,
+            transaction,
+            reminderType
+          );
+
+          sentReminders.push({
+            user_id: transaction.user._id,
+            transaction_id: transaction._id,
+            type: reminderType,
+            sent_at: new Date(),
+            success: true,
+          });
+
+          await logger.info("Overdue reminder sent", {
+            service: "BookService",
+            method: "sendOverdueReminders",
+            user_id: transaction.user._id,
+            transaction_id: transaction._id,
+            reminder_type: reminderType,
+          });
+        } catch (error) {
+          await logger.error("Failed to send reminder", {
+            service: "BookService",
+            method: "sendOverdueReminders",
+            user_id: transaction.user._id,
+            transaction_id: transaction._id,
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        sent: sentReminders.length,
+        total_overdue: overdueTransactions.length,
+        reminders: sentReminders,
+      };
+    } catch (error) {
+      await logger.error(error, {
+        service: "BookService",
+        method: "sendOverdueReminders",
+      });
+      throw error;
+    }
+  }
+
+  // Utility method to send actual reminders (to be implemented with email/SMS service)
+  async sendReminder(user, transaction, type) {
+    // Implementation would go here for actual email/SMS service integration
+    // This is a placeholder for the actual implementation
+    return { success: true, message: `Reminder sent via ${type}` };
   }
 }
 

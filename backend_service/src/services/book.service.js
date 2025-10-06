@@ -4,6 +4,9 @@ const Book = require("../../models/book.model");
 const User = require("../../models/user.model");
 const Transaction = require("../../models/transaction.model");
 const { ERROR_MESSAGES } = require("../constants/constants");
+const { default: mongoose } = require("mongoose");
+const FineUtils = require("../utils/fineUtils");
+const Fine = require("../../models/fine.model");
 
 class BookService {
   // Get all books with filtering and pagination
@@ -826,20 +829,15 @@ class BookService {
   }
 
   // Waive fine (admin only)
-  async waiveFine(userId, amount, transactionIds = [], reason = "") {
+  async waiveFine(userId, amount, transactionIds = [], reason = "", adminId) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
+      // Validate waiver eligibility
+      await FineUtils.validateWaiverEligibility(userId, amount, transactionIds);
+
       const user = await User.findById(userId).session(session);
-      if (!user) {
-        throw new Error(ERROR_MESSAGES.USER_NOT_FOUND);
-      }
-
-      if (user.fines === 0) {
-        throw new Error(ERROR_MESSAGES.NO_OUTSTANDING_FINES);
-      }
-
       let waivedFines = [];
       let totalWaived = 0;
 
@@ -853,7 +851,7 @@ class BookService {
 
         for (const fine of fines) {
           fine.status = "waived";
-          fine.waived_by = req.user?._id;
+          fine.waived_by = adminId;
           fine.waived_reason = reason;
           fine.waived_at = new Date();
           await fine.save({ session });
@@ -862,7 +860,53 @@ class BookService {
         }
       } else {
         // Waive general amount
-        totalWaived = Math.min(amount, user.fines);
+        totalWaived = Math.min(amount || user.fines, user.fines);
+
+        // Find fines to waive (oldest first)
+        const finesToWaive = await Fine.find({
+          user: userId,
+          status: { $in: ["outstanding", "overdue"] },
+        })
+          .sort({ due_date: 1 })
+          .session(session);
+
+        let remainingWaiver = totalWaived;
+        for (const fine of finesToWaive) {
+          if (remainingWaiver <= 0) break;
+
+          const waiveAmount = Math.min(fine.amount, remainingWaiver);
+          if (waiveAmount === fine.amount) {
+            // Waive entire fine
+            fine.status = "waived";
+            fine.waived_by = adminId;
+            fine.waived_reason = reason;
+            fine.waived_at = new Date();
+            await fine.save({ session });
+            waivedFines.push(fine);
+          } else {
+            // Partial waiver - create new fine record for remaining amount
+            const newFine = new Fine({
+              user: userId,
+              transaction: fine.transaction,
+              amount: fine.amount - waiveAmount,
+              reason: fine.reason,
+              status: "outstanding",
+              due_date: fine.due_date,
+            });
+            await newFine.save({ session });
+
+            // Update original fine
+            fine.amount = waiveAmount;
+            fine.status = "waived";
+            fine.waived_by = adminId;
+            fine.waived_reason = reason;
+            fine.waived_at = new Date();
+            await fine.save({ session });
+            waivedFines.push(fine);
+          }
+
+          remainingWaiver -= waiveAmount;
+        }
       }
 
       // Update user's fine balance
@@ -876,9 +920,11 @@ class BookService {
         service: "BookService",
         method: "waiveFine",
         user_id: userId,
+        admin_id: adminId,
         amount_waived: totalWaived,
         reason,
         remaining_fines: user.fines,
+        waived_fines_count: waivedFines.length,
       });
 
       return {
@@ -891,16 +937,27 @@ class BookService {
           amount_waived: totalWaived,
           reason,
           waived_fines: waivedFines,
+          waiver_count: waivedFines.length,
         },
       };
     } catch (error) {
       await session.abortTransaction();
+
+      if (
+        error.message.includes("waiver limit") ||
+        error.message.includes("No outstanding fines") ||
+        error.message.includes("exceeds outstanding fines")
+      ) {
+        throw new Error(error.message);
+      }
+
       await logger.error(error, {
         service: "BookService",
         method: "waiveFine",
         user_id: userId,
       });
-      throw error;
+
+      throw new Error(ERROR_MESSAGES.CANNOT_WAIVE_FINE);
     } finally {
       session.endSession();
     }

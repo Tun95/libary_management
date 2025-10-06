@@ -50,4 +50,6 @@ finePaymentSchema.pre("save", async function (next) {
   next();
 });
 
-module.exports = mongoose.model("FinePayment", finePaymentSchema);
+
+const FinePayment = mongoose.model("FinePayment", finePaymentSchema);
+module.exports = FinePayment;

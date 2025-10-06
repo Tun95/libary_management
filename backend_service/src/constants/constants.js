@@ -78,6 +78,12 @@ const ERROR_MESSAGES = {
   INVALID_PAYMENT_AMOUNT: "Payment amount must be greater than zero",
   PAYMENT_PROCESSING_ERROR: "Error processing payment",
 
+  // Fine Waiver Errors
+  WAIVER_REASON_REQUIRED: "Valid reason required for fine waiver",
+  WAIVER_AMOUNT_EXCEEDS_FINES: "Waiver amount cannot exceed outstanding fines",
+  WAIVER_NOT_AUTHORIZED: "Not authorized to waive fines",
+  WAIVER_LIMIT_EXCEEDED: "Waiver limit exceeded for this user",
+
   // Validation messages
   VALIDATION_ERROR: "Validation failed",
 
@@ -85,8 +91,27 @@ const ERROR_MESSAGES = {
   INTERNAL_SERVER_ERROR: "Internal server error",
 };
 
+// Fine Configuration Constants
+const FINE_CONFIG = {
+  RATE_PER_DAY: 5,
+  MAX_FINE: 50,
+  GRACE_PERIOD_DAYS: 3,
+  DAILY_CAP: 10,
+  DAMAGE_FINES: {
+    excellent: 0,
+    good: 0,
+    fair: 5,
+    poor: 15,
+    damaged: 30,
+    lost: 50,
+  },
+  WAIVER_LIMIT_PER_MONTH: 3, // Maximum waivers per user per month
+  MAX_BULK_OPERATIONS: 10, // Maximum items for bulk operations
+};
+
 module.exports = {
   STATUS,
   HEALTH_STATUS,
   ERROR_MESSAGES,
+  FINE_CONFIG,
 };

@@ -591,6 +591,11 @@ class BookService {
         message = `Book returned with damage. Fine: $${damageFine}`;
       }
 
+      await emailService.sendReturnConfirmationEmail(
+        transaction.user,
+        returnDetails
+      );
+
       await logger.info("Book returned successfully", {
         service: "BookService",
         method: "returnBook",
@@ -1134,9 +1139,53 @@ class BookService {
 
   // Utility method to send actual reminders (to be implemented with email/SMS service)
   async sendReminder(user, transaction, type) {
-    // Implementation would go here for actual email/SMS service integration
-    // This is a placeholder for the actual implementation
-    return { success: true, message: `Reminder sent via ${type}` };
+    try {
+      if (type === "email") {
+        const daysOverdue = Math.ceil(
+          (new Date() - transaction.due_date) / (1000 * 60 * 60 * 24)
+        );
+        const calculatedFine = this.calculateFine(
+          transaction.due_date,
+          new Date()
+        );
+
+        const overdueBook = {
+          title: transaction.book.title,
+          author: transaction.book.author,
+          due_date: transaction.due_date,
+          daysOverdue: daysOverdue,
+          calculatedFine: calculatedFine,
+        };
+
+        // Determine reminder type based on days overdue
+        let reminderType = "first";
+        if (daysOverdue > 14) reminderType = "final";
+        else if (daysOverdue > 7) reminderType = "second";
+
+        await emailService.sendOverdueReminderEmail(
+          user,
+          [overdueBook],
+          reminderType
+        );
+
+        return {
+          success: true,
+          message: `Email reminder sent to ${user.email}`,
+        };
+      }
+
+      // Add SMS integration here if needed
+      return { success: false, message: `Unsupported reminder type: ${type}` };
+    } catch (error) {
+      await logger.error("Failed to send reminder", {
+        service: "BookService",
+        method: "sendReminder",
+        user_id: user._id,
+        transaction_id: transaction._id,
+        error: error.message,
+      });
+      throw error;
+    }
   }
 }
 

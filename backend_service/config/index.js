@@ -3,6 +3,12 @@ module.exports = {
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
   backendUrl: process.env.BACKEND_URL || "http://localhost:5000",
   webName: process.env.WEB_NAME || "Library Management",
+  
+  libraryAddress:
+    process.env.LIBRARY_ADDRESS || "123 Library Lane, Campus City",
+  libraryPhone: process.env.LIBRARY_PHONE || "(555) 123-4567",
+  libraryEmail: process.env.LIBRARY_EMAIL || "library@university.edu",
+
   db: {
     mongodb: {
       uri: process.env.MONGODB_URI || "",

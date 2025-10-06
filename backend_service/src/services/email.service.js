@@ -2,6 +2,12 @@
 const nodemailer = require("nodemailer");
 const logger = require("../../config/logger");
 const config = require("../../config");
+const {
+  generatePaymentConfirmationTemplate,
+  generateReturnConfirmationTemplate,
+  generateFineNotificationTemplate,
+  generateOverdueReminderTemplate,
+} = require("../template/template");
 
 class EmailService {
   constructor() {
@@ -178,6 +184,154 @@ class EmailService {
       });
       return false; // Non-critical, so just log the error
     }
+  }
+
+  // Send overdue book reminder email
+  async sendOverdueReminderEmail(user, overdueBooks, reminderType = "first") {
+    try {
+      const { email, full_name } = user;
+
+      const mailOptions = {
+        from: `${config.webName} Library <${config.providers.email.username}>`,
+        to: email,
+        subject: this.getOverdueSubject(reminderType, overdueBooks.length),
+        html: generateOverdueReminderTemplate(
+          full_name,
+          overdueBooks,
+          reminderType
+        ),
+      };
+
+      await this.transporter.sendMail(mailOptions);
+
+      await logger.info("Overdue reminder email sent successfully", {
+        service: "EmailService",
+        method: "sendOverdueReminderEmail",
+        email: email,
+        reminder_type: reminderType,
+        books_count: overdueBooks.length,
+      });
+
+      return true;
+    } catch (error) {
+      await logger.error(error, {
+        service: "EmailService",
+        method: "sendOverdueReminderEmail",
+        email: user.email,
+      });
+      throw new Error("Failed to send overdue reminder email");
+    }
+  }
+
+  // Send fine notification email
+  async sendFineNotificationEmail(user, fineDetails) {
+    try {
+      const { email, full_name } = user;
+
+      const mailOptions = {
+        from: `${config.webName} Library <${config.providers.email.username}>`,
+        to: email,
+        subject: `Overdue Fine Notice - $${fineDetails.totalAmount}`,
+        html: generateFineNotificationTemplate(full_name, fineDetails),
+      };
+
+      await this.transporter.sendMail(mailOptions);
+
+      await logger.info("Fine notification email sent successfully", {
+        service: "EmailService",
+        method: "sendFineNotificationEmail",
+        email: email,
+        fine_amount: fineDetails.totalAmount,
+      });
+
+      return true;
+    } catch (error) {
+      await logger.error(error, {
+        service: "EmailService",
+        method: "sendFineNotificationEmail",
+        email: user.email,
+      });
+      throw new Error("Failed to send fine notification email");
+    }
+  }
+
+  // Send book return confirmation email
+  async sendReturnConfirmationEmail(user, returnDetails) {
+    try {
+      const { email, full_name } = user;
+
+      const mailOptions = {
+        from: `${config.webName} Library <${config.providers.email.username}>`,
+        to: email,
+        subject: "Book Return Confirmation",
+        html: generateReturnConfirmationTemplate(full_name, returnDetails),
+      };
+
+      await this.transporter.sendMail(mailOptions);
+
+      await logger.info("Return confirmation email sent successfully", {
+        service: "EmailService",
+        method: "sendReturnConfirmationEmail",
+        email: email,
+        transaction_id: returnDetails.transactionId,
+      });
+
+      return true;
+    } catch (error) {
+      await logger.error(error, {
+        service: "EmailService",
+        method: "sendReturnConfirmationEmail",
+        email: user.email,
+      });
+      throw new Error("Failed to send return confirmation email");
+    }
+  }
+
+  // Send payment confirmation email
+  async sendPaymentConfirmationEmail(user, paymentDetails) {
+    try {
+      const { email, full_name } = user;
+
+      const mailOptions = {
+        from: `${config.webName} Library <${config.providers.email.username}>`,
+        to: email,
+        subject: "Fine Payment Confirmation",
+        html: generatePaymentConfirmationTemplate(full_name, paymentDetails),
+      };
+
+      await this.transporter.sendMail(mailOptions);
+
+      await logger.info("Payment confirmation email sent successfully", {
+        service: "EmailService",
+        method: "sendPaymentConfirmationEmail",
+        email: email,
+        payment_amount: paymentDetails.amount,
+      });
+
+      return true;
+    } catch (error) {
+      await logger.error(error, {
+        service: "EmailService",
+        method: "sendPaymentConfirmationEmail",
+        email: user.email,
+      });
+      throw new Error("Failed to send payment confirmation email");
+    }
+  }
+
+  // Generate overdue reminder subject based on reminder type
+  getOverdueSubject(reminderType, bookCount) {
+    const subjects = {
+      first: `Reminder: ${bookCount} Book${bookCount > 1 ? "s" : ""} Overdue`,
+      second: `URGENT: ${bookCount} Book${
+        bookCount > 1 ? "s" : ""
+      } Still Overdue`,
+      final: `FINAL NOTICE: ${bookCount} Book${
+        bookCount > 1 ? "s" : ""
+      } Overdue - Account Suspension Imminent`,
+    };
+
+    return subjects[reminderType] || subjects.first;
   }
 }
 
